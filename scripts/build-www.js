@@ -4,7 +4,7 @@
 // Что делает:
 //  1. Очищает www и копирует туда страницы, css, js и img.
 //  2. Записывает js/config.js с настройками для приложения (полный адрес сервера).
-//  3. Кладёт шрифт Inter внутрь приложения — чтобы всё открывалось без интернета.
+//  3. Кладёт Firebase и шрифт Inter внутрь приложения — чтобы всё открывалось без интернета.
 //  4. Скачивает фото для главного экрана (один раз, в img/hero.webp) — тоже для работы без интернета.
 //  5. Проверяет, что страницы больше ничего не грузят из интернета.
 const fs = require('fs');
@@ -57,6 +57,15 @@ function copyDir(src, dst) {
   if (!cfgLine.test(cfg)) fail('В js/config.js не найдена строка window.JF_CONFIG = { ... };');
   fs.writeFileSync(cfgPath, cfg.replace(cfgLine, `window.JF_CONFIG = { apiBase: '${API_BASE}', isApp: true };`));
 
+  // 2б. Firebase (аккаунты) внутрь приложения
+  const vendor = path.join(OUT, 'js', 'vendor');
+  fs.mkdirSync(vendor, { recursive: true });
+  for (const f of ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js']) {
+    const src = path.join(ROOT, 'node_modules', 'firebase', f);
+    need(src, 'Выполни: npm install');
+    fs.copyFileSync(src, path.join(vendor, f));
+  }
+
   // 3. Шрифт Inter внутрь приложения
   const dir = path.join(ROOT, 'node_modules', '@fontsource', 'inter');
   need(dir, 'Выполни: npm install');
@@ -88,6 +97,7 @@ function copyDir(src, dst) {
     const file = path.join(OUT, p);
     let html = fs.readFileSync(file, 'utf8');
     html = html
+      .replace(/https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/(firebase-[a-z-]+\.js)/g, 'js/vendor/$1')
       .replace(/\s*<link rel="preconnect"[^>]*>/g, '')
       .replace(/<link href="https:\/\/fonts\.googleapis\.com\/[^"]*" rel="stylesheet">/g, '<link rel="stylesheet" href="css/fonts.css">');
     fs.writeFileSync(file, html);

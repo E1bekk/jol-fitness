@@ -48,7 +48,8 @@
   }
   function render(keepScroll) {
     const r = parse();
-    if (!JF.profile && r.name !== 'start') { location.replace('#/start'); return; }
+    const OPEN = ['start', 'login', 'signup'];   // экраны, доступные до заполнения анкеты
+    if (!JF.profile && !OPEN.includes(r.name)) { location.replace('#/start'); return; }
     if (JF.profile && r.name === 'start') { location.replace('#/home'); return; }
     const sy = window.scrollY, vy = view.scrollTop;
     if (current && current.destroy) current.destroy();
@@ -77,6 +78,9 @@
   const refresh = () => render(true);
   window.addEventListener('hashchange', () => render());
   document.addEventListener('jf:resume', () => { if (current && current.live) refresh(); });
+  document.addEventListener('jf:resume-data', () => { if (current && current.live) refresh(); });
+  document.addEventListener('jf:account', () => { const n = parse().name; if (n === 'profile') refresh(); });
+  const ACC = () => window.JF_account && JF_account.enabled ? JF_account : null;
 
   // =========================================================
   //  ВЕРХНЯЯ ПАНЕЛЬ: заголовок, поиск, Pro
@@ -339,7 +343,9 @@
         <div class="feat"><span class="chip">${icon('camera')}</span>Сфотографируй еду — узнаешь калории и БЖУ</div>
         <div class="feat"><span class="chip">${icon('dumbbell')}</span>Программы тренировок без инвентаря</div>
         <div class="onb-foot"><button class="btn btn-dark" data-next>Начать${icon('arrow')}</button></div>
-        <p class="disclaimer" style="margin-top:1rem">Твои данные хранятся только на этом устройстве.</p>`;
+        ${ACC() ? `<button class="btn btn-ghost btn-block" data-go-login style="margin-top:.625rem">${icon('user')}У меня уже есть аккаунт</button>
+          <p class="disclaimer" style="margin-top:1rem">Войди, чтобы вернуть свои данные после переустановки или на другом устройстве.</p>`
+          : '<p class="disclaimer" style="margin-top:1rem">Твои данные хранятся только на этом устройстве.</p>'}`;
     } else if (s.step === 1) {
       body = `${steps}<h1>Как тебя зовут?</h1><p class="lead">Так ИИ-тренер будет обращаться к тебе.</p>
         <div class="field"><label class="label" for="f-name">Имя</label><input class="input" id="f-name" maxlength="30" value="${esc(d.name || '')}" placeholder="Например, Айбек" autocomplete="given-name"></div>
@@ -396,6 +402,7 @@
             if (key === 'goal') { const f = $('#gw-field'); f.hidden = val === 'keep'; }
             return;
           }
+          if (e.target.closest('[data-go-login]')) return go('#/login');
           if (e.target.closest('[data-prev]')) { collect(v); onb.step--; return refresh(); }
           if (e.target.closest('[data-next]')) {
             collect(v);
@@ -410,7 +417,7 @@
             JF.setProfile(prof);
             JF.setProgram(recommendProgram(dd).id);
             onb = { step: 0, d: {} };
-            location.replace('#/home');
+            location.replace(ACC() && !ACC().user ? '#/signup/onb' : '#/home');
           }
         };
         v.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { const n = $('[data-next]', v); if (n) n.click(); } };
@@ -1223,12 +1230,14 @@
           <button class="btn btn-dark btn-block" data-edit-profile>${icon('edit')}Изменить данные и цель</button>
         </div>
         <div class="card pad">
+          ${accountBlock()}
           <button class="set-row" data-go-btn="#/workouts"><span class="chip">${icon('activity')}</span>Программа тренировок<span class="end">${esc(D.PROGRAMS.find(x => x.id === JF.program()).title)}${icon('chevR')}</span></button>
           <button class="set-row" data-perweek><span class="chip">${icon('calendar')}</span>Тренировок в неделю<span class="end">${p.perWeek || 3}${icon('chevR')}</span></button>
           <button class="set-row" data-go-btn="#/reminders"><span class="chip">${icon('bell')}</span>Напоминания<span class="end">${icon('chevR')}</span></button>
           <button class="set-row" data-go-btn="#/help"><span class="chip">${icon('help')}</span>Помощь<span class="end">${icon('chevR')}</span></button>
           <a class="set-row" href="privacy.html"><span class="chip">${icon('shield')}</span>Политика конфиденциальности<span class="end">${icon('chevR')}</span></a>
-          <button class="set-row danger" data-wipe><span class="chip">${icon('trash')}</span>Удалить все мои данные</button>
+          ${ACC() && ACC().user ? `<button class="set-row danger" data-del-acc><span class="chip">${icon('trash')}</span>Удалить аккаунт и все данные</button>`
+            : `<button class="set-row danger" data-wipe><span class="chip">${icon('trash')}</span>Удалить все мои данные</button>`}
           <p class="disclaimer" style="margin-top:1rem">JOL Fitness · версия 1.0.0 · JOL.AI</p>
         </div>
       </div>`,
@@ -1236,6 +1245,20 @@
         v.onclick = async e => {
           if (e.target.closest('[data-edit-profile]')) return profileSheet();
           if (e.target.closest('[data-perweek]')) return perWeekSheet();
+          if (e.target.closest('[data-acc-signup]')) return go('#/signup');
+          if (e.target.closest('[data-acc-login]')) return go('#/login');
+          if (e.target.closest('[data-acc-sync]')) { await ACC().push(); toast(ACC().status.error ? 'Не получилось: ' + ACC().status.error : 'Сохранено в облаке'); return refresh(); }
+          if (e.target.closest('[data-acc-logout]')) {
+            const ok = await UI.confirm({ title: 'Выйти из аккаунта?', ok: 'Выйти',
+              text: 'Твои данные останутся в облаке, а с этого устройства удалятся. Чтобы вернуть их, просто войди снова.' });
+            if (!ok) return;
+            try { await ACC().signOut(); } catch (err) { return toast(ACC().errText(err)); }
+            if (window.JF_reminders) await JF_reminders.removeAll();
+            JF.wipe(); onb = { step: 0, d: {} }; pendingScan = null;
+            location.replace('#/start'); toast('Ты вышел из аккаунта');
+            return;
+          }
+          if (e.target.closest('[data-del-acc]')) return deleteAccountSheet();
           if (e.target.closest('[data-wipe]')) {
             const ok = await UI.confirm({ title: 'Удалить все данные?', danger: true, typeWord: 'УДАЛИТЬ', ok: 'Удалить навсегда',
               text: 'Профиль, дневник питания, вода, вес, тренировки, переписка с ИИ-тренером и напоминания будут удалены с этого устройства. Восстановить их будет нельзя.' });
@@ -1250,6 +1273,108 @@
       }
     };
   };
+
+  // ---------- Аккаунт ----------
+  function ago(t) {
+    if (!t) return '';
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? 'только что' : m < 60 ? `${m} мин назад` : `${Math.round(m / 60)} ч назад`;
+  }
+  function accountBlock() {
+    const A = ACC();
+    if (!A) return '';
+    if (!A.user) return `<div class="note warn" style="margin-bottom:.75rem">${icon('info')}<div><b>Данные только на этом устройстве.</b> Создай аккаунт, чтобы не потерять их при удалении приложения и открывать JOL Fitness на ноутбуке.
+        <div class="row-btns" style="margin-top:.75rem"><button class="btn btn-dark btn-sm" data-acc-signup>Создать аккаунт</button><button class="btn btn-white btn-sm" data-acc-login>Войти</button></div></div></div>`;
+    const s = A.status;
+    const line = s.error ? `не сохранено: ${esc(s.error)}` : s.pending ? 'ждёт отправки в облако' : `сохранено в облаке ${ago(s.lastSync)}`;
+    return `<div class="set-row" style="cursor:default"><span class="chip">${icon('user')}</span><span class="li-main"><b>${esc(A.email)}</b><small>${line}</small></span>
+        <button class="icon-btn" data-acc-sync aria-label="Сохранить сейчас">${icon('refresh')}</button></div>
+      <button class="set-row" data-acc-logout><span class="chip">${icon('logout')}</span>Выйти из аккаунта<span class="end">${icon('chevR')}</span></button>`;
+  }
+  function deleteAccountSheet() {
+    const A = ACC();
+    openSheet({
+      title: 'Удалить аккаунт?', html: `<p class="muted" style="margin:0 0 1rem">Аккаунт ${esc(A.email)} и все данные в облаке и на этом устройстве будут удалены навсегда: профиль, дневник, вес, тренировки, переписка с ИИ-тренером. Восстановить их будет нельзя.</p>
+        <div class="field"><label class="label" for="del-pw">Для подтверждения введи пароль</label><input class="input" id="del-pw" type="password" autocomplete="current-password"></div>
+        <button class="btn btn-danger btn-block" data-del-ok>${icon('trash')}Удалить навсегда</button>
+        <button class="btn btn-ghost btn-block" data-close style="margin-top:.625rem">Отмена</button>`,
+      onMount(sheet, close) {
+        sheet.addEventListener('click', async e => {
+          const b = e.target.closest('[data-del-ok]'); if (!b) return;
+          const pw = $('#del-pw', sheet).value;
+          if (!pw) return toast('Введи пароль');
+          b.disabled = true; b.textContent = 'Удаляем…';
+          try {
+            await A.deleteAccount(pw);
+            if (window.JF_reminders) await JF_reminders.removeAll();
+            JF.wipe(); onb = { step: 0, d: {} }; pendingScan = null;
+            close(); location.replace('#/start'); toast('Аккаунт и все данные удалены');
+          } catch (err) { b.disabled = false; b.innerHTML = icon('trash') + 'Удалить навсегда'; toast(A.errText(err)); }
+        });
+      }
+    });
+  }
+  function authScreen(mode, arg) {
+    const A = ACC();
+    if (!A) return { redirect: JF.profile ? '#/profile' : '#/start' };
+    if (A.user) return { redirect: JF.profile ? '#/profile' : '#/start' };
+    const isUp = mode === 'signup', afterOnb = arg === 'onb';
+    const title = isUp ? (afterOnb ? 'Сохрани свой прогресс' : 'Создать аккаунт') : 'Вход в аккаунт';
+    const lead = isUp ? 'С аккаунтом данные не пропадут при удалении приложения, и их можно открыть на телефоне и ноутбуке.'
+      : 'Введи email и пароль — мы вернём твой профиль, дневник, вес и тренировки.';
+    return {
+      top: false, noRail: true, cls: 'page',
+      html: `<div class="onb"><div class="onb-card">
+        ${afterOnb ? '' : `<button class="back-b" data-auth-back>${icon('chevL')}Назад</button>`}
+        <h1>${title}</h1><p class="lead">${lead}</p>
+        ${!isUp && JF.profile ? `<div class="note warn" style="margin-bottom:1rem">${icon('info')}<div>Если в аккаунте уже есть данные, они заменят то, что сейчас на этом устройстве.</div></div>` : ''}
+        <form id="auth-form" novalidate>
+          <div class="field"><label class="label" for="a-email">Email</label><input class="input" id="a-email" type="email" inputmode="email" autocomplete="email" placeholder="name@mail.com" required></div>
+          <div class="field"><label class="label" for="a-pw">Пароль${isUp ? ' (минимум 6 символов)' : ''}</label>
+            <div style="position:relative"><input class="input" id="a-pw" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" required style="padding-right:3.5rem">
+            <button type="button" class="icon-btn" data-pw-eye aria-label="Показать пароль" style="position:absolute;right:.375rem;top:.375rem">${icon('lock')}</button></div></div>
+          <button class="btn btn-dark btn-block" type="submit" id="a-go">${isUp ? 'Создать аккаунт' : 'Войти'}</button>
+        </form>
+        ${isUp ? (afterOnb ? `<button class="btn btn-ghost btn-block" data-later style="margin-top:.625rem">Позже</button>` : '')
+          : `<button class="btn btn-ghost btn-block" data-reset style="margin-top:.625rem">Забыли пароль?</button>`}
+        <p class="disclaimer" style="margin-top:1rem">${isUp ? `Уже есть аккаунт? <a href="#/login">Войти</a>` : `Нет аккаунта? <a href="${JF.profile ? '#/signup' : '#/start'}">${JF.profile ? 'Создать' : 'Начать заново'}</a>`}</p>
+        <p class="disclaimer">Продолжая, ты соглашаешься с <a href="privacy.html">политикой конфиденциальности</a>.</p>
+      </div></div>`,
+      mount(v) {
+        const email = $('#a-email', v), pw = $('#a-pw', v), btn = $('#a-go', v);
+        if (window.innerWidth > 620) email.focus();
+        $('#auth-form', v).addEventListener('submit', async e => {
+          e.preventDefault();
+          if (!/^\S+@\S+\.\S+$/.test(email.value.trim())) return toast('Проверь email');
+          if (pw.value.length < 6) return toast('Пароль — минимум 6 символов');
+          btn.disabled = true; btn.textContent = isUp ? 'Создаём…' : 'Входим…';
+          try {
+            if (isUp) {
+              await A.signUp(email.value, pw.value);
+              toast('Аккаунт создан — данные сохранены в облаке');
+              location.replace(afterOnb ? '#/home' : '#/profile');
+            } else {
+              const has = await A.signIn(email.value, pw.value);
+              toast(has ? 'С возвращением, ' + JF.profile.name + '!' : 'Вход выполнен. Заполни анкету');
+              location.replace(has ? '#/home' : '#/start');
+            }
+          } catch (err) { btn.disabled = false; btn.textContent = isUp ? 'Создать аккаунт' : 'Войти'; toast(A.errText(err)); }
+        });
+        v.onclick = async e => {
+          if (e.target.closest('[data-auth-back]')) { history.length > 1 ? history.back() : go(JF.profile ? '#/profile' : '#/start'); return; }
+          if (e.target.closest('[data-later]')) return location.replace('#/home');
+          if (e.target.closest('[data-pw-eye]')) { pw.type = pw.type === 'password' ? 'text' : 'password'; return; }
+          if (e.target.closest('[data-reset]')) {
+            if (!/^\S+@\S+\.\S+$/.test(email.value.trim())) return toast('Сначала впиши свой email');
+            try { await A.resetPassword(email.value); toast('Письмо для смены пароля отправлено на ' + email.value.trim()); }
+            catch (err) { toast(A.errText(err)); }
+          }
+        };
+      }
+    };
+  }
+  SCREENS.login = () => authScreen('login');
+  SCREENS.signup = arg => authScreen('signup', arg);
   function perWeekSheet() {
     openSheet({
       title: 'Тренировок в неделю', html: `<div class="seg" style="justify-content:center;margin-bottom:1rem">${[2, 3, 4, 5].map(k => `<button data-k="${k}" aria-pressed="${(JF.profile.perWeek || 3) === k}">${k}</button>`).join('')}</div>
@@ -1306,7 +1431,8 @@
       ['Как работает сканер еды?', 'Ты фотографируешь тарелку, фото отправляется на сервер JOL Fitness и анализируется ИИ (Google Gemini). ИИ определяет блюда, оценивает вес порции и считает калории и БЖУ. Фото не сохраняется ни на сервере, ни в приложении.'],
       ['Насколько точны калории?', 'По фото ИИ оценивает порцию примерно, ошибка может быть 10–30%. Поправь граммы кнопками «−» и «+» перед добавлением. Для точности можно взвешивать еду и добавлять её вручную.'],
       ['Как считается моя норма?', 'По формуле Миффлина — Сан-Жеора с учётом пола, возраста, роста, веса и активности. Для похудения — минус 15%, для набора массы — плюс 10%. Белок — 1,4–1,7 г на кг веса.'],
-      ['Где хранятся мои данные?', 'Профиль, дневник, вес и тренировки хранятся только на твоём устройстве. На сервер уходят только вопросы ИИ-тренеру (вместе с твоими нормами, чтобы ответ был точнее) и фото еды для анализа. Удалить всё можно в «Профиле».'],
+      ['Где хранятся мои данные?', 'Без аккаунта — только на твоём устройстве. С аккаунтом — ещё и в защищённом облаке (Google Firebase), поэтому после переустановки или на ноутбуке достаточно войти по email и паролю. Вопросы ИИ-тренеру и фото еды отправляются на сервер только для ответа и не сохраняются. Удалить всё можно в «Профиле».'],
+      ['Забыл пароль — что делать?', 'На экране входа впиши свой email и нажми «Забыли пароль?». Придёт письмо со ссылкой для нового пароля (проверь папку «Спам»).'],
       ['Почему не приходят напоминания?', 'Проверь, что уведомления разрешены, включи «Будильники и напоминания» (кнопка на экране напоминаний) и отключи экономию батареи для JOL Fitness в настройках Android.'],
       ['Почему ИИ-тренер не отвечает?', 'ИИ-тренеру и сканеру нужен интернет. Если сеть есть — подожди минуту и попробуй снова: бесплатный лимит ИИ иногда временно заканчивается.'],
       ['Можно ли заниматься с травмами?', 'JOL Fitness не заменяет врача. При болезнях сердца, суставов, спины, при беременности или после травм посоветуйся с врачом перед тренировками. Если во время упражнения появилась боль — остановись.']
@@ -1325,6 +1451,7 @@
   // новый день, пока приложение открыто
   let lastDay = JF.dayKey();
   setInterval(() => { if (JF.dayKey() !== lastDay) { lastDay = JF.dayKey(); if (current && current.live) refresh(); } }, 60000);
-  document.getElementById('boot').remove();
-  render();
+  const start = () => { const b = document.getElementById('boot'); if (b) b.remove(); render(); };
+  if (!JF.profile && ACC()) Promise.race([ACC().ready, new Promise(r => setTimeout(r, 4000))]).then(start);
+  else start();
 })();

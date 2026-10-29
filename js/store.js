@@ -2,6 +2,7 @@
 // на сервер ничего не сохраняется. «Удалить все данные» в профиле стирает этот ключ.
 (function () {
   const KEY = 'jolFitness';
+  const SYNC_KEY = 'jolFitnessSync';   // что ещё не отправлено в облако (только для аккаунта)
   const pad = n => String(n).padStart(2, '0');
   const dayKey = d => { d = d || new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
   const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -20,6 +21,18 @@
     return blank();
   }
   let S = load();
+
+  // ===== Синхронизация с облаком =====
+  // У каждого дня и у «основных» данных есть отметка времени u. Изменённое помечается как «грязное»,
+  // js/sync.js отправляет это в Firebase и снимает пометку.
+  function loadSync() {
+    try { const x = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); if (x) return { main: x.main || 0, days: x.days || {}, lastPull: x.lastPull || 0 }; } catch (e) {}
+    return { main: 0, days: {}, lastPull: 0 };
+  }
+  let Y = loadSync();
+  function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(Y)); } catch (e) {} }
+  function touchMain() { S.u = Date.now(); Y.main = S.u; saveSync(); }
+  function touchDay(k) { const d = day(k); d.u = Date.now(); Y.days[k || dayKey()] = d.u; saveSync(); }
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
@@ -114,42 +127,91 @@
       S.profile = Object.assign({}, S.profile || {}, p);
       if (first || !S.weights.length) S.weights.push({ d: dayKey(), kg: S.profile.weight });
       if (first) S.createdAt = Date.now();
-      save();
+      touchMain(); save();
     },
-    setWater(glasses) { day().water = Math.max(0, Math.min(40, glasses)); save(); },
+    setWater(glasses) { day().water = Math.max(0, Math.min(40, glasses)); touchDay(); save(); },
     addWater(delta) { A.setWater(peek().water + delta); },
     addMeal(m) {
       day().meals.push(Object.assign({ id: uid(), at: Date.now() }, m,
         { kcal: Math.round(m.kcal), p: +(+m.p).toFixed(1), f: +(+m.f).toFixed(1), c: +(+m.c).toFixed(1) }));
-      save();
+      touchDay(); save();
     },
-    removeMeal(id, k) { const d = day(k); d.meals = d.meals.filter(m => m.id !== id); save(); },
+    removeMeal(id, k) { const d = day(k); d.meals = d.meals.filter(m => m.id !== id); touchDay(k); save(); },
     logWorkout(w) {
       day().workouts.push(Object.assign({ id: uid(), at: Date.now() }, w));
       if (w.pid != null && w.idx != null) {
         const list = S.program.done[w.pid] || (S.program.done[w.pid] = []);
         if (!list.includes(w.idx)) list.push(w.idx);
       }
-      save();
+      touchDay(); touchMain(); save();
     },
-    setProgram(pid) { S.program.id = pid; save(); },
-    resetProgram(pid) { S.program.done[pid] = []; save(); },
+    setProgram(pid) { S.program.id = pid; touchMain(); save(); },
+    resetProgram(pid) { S.program.done[pid] = []; touchMain(); save(); },
     addWeight(kg, k) {
       k = k || dayKey();
       S.weights = S.weights.filter(w => w.d !== k);
       S.weights.push({ d: k, kg: +kg });
       if (S.profile) S.profile.weight = currentWeight();
-      save();
+      touchMain(); save();
     },
-    removeWeight(k) { if (S.weights.length > 1) { S.weights = S.weights.filter(w => w.d !== k); save(); } },
-    pushChat(msg) { S.chat.push(Object.assign({ at: Date.now() }, msg)); if (S.chat.length > 80) S.chat = S.chat.slice(-80); save(); },
-    clearChat() { S.chat = []; save(); },
+    removeWeight(k) { if (S.weights.length > 1) { S.weights = S.weights.filter(w => w.d !== k); touchMain(); save(); } },
+    pushChat(msg) { S.chat.push(Object.assign({ at: Date.now() }, msg)); if (S.chat.length > 60) S.chat = S.chat.slice(-60); touchMain(); save(); },
+    clearChat() { S.chat = []; touchMain(); save(); },
     wipe() {
       try {
         Object.keys(localStorage).forEach(k => { if (/^jol(Fitness|Fit)/.test(k)) localStorage.removeItem(k); });
       } catch (e) {}
-      S = blank();
+      S = blank(); Y = { main: 0, days: {}, lastPull: 0 };
       document.dispatchEvent(new CustomEvent('jf:change'));
+    }
+  };
+
+
+  // ===== Для js/sync.js =====
+  const Sync = {
+    pending() { return { main: Y.main, days: Object.assign({}, Y.days) }; },
+    hasPending() { return !!Y.main || Object.keys(Y.days).length > 0; },
+    exportMain() {
+      return { v: 1, profile: S.profile, weights: S.weights, program: S.program, createdAt: S.createdAt || Date.now(),
+        chat: S.chat.slice(-40).map(m => ({ role: m.role, content: String(m.content).slice(0, 2500), at: m.at || 0, err: !!m.err })), u: S.u || Date.now() };
+    },
+    exportDay(k) { const d = S.days[k] || EMPTY_DAY(); return { water: d.water || 0, meals: d.meals || [], workouts: d.workouts || [], u: d.u || Date.now() }; },
+    // после успешной отправки снимаем пометку, если с тех пор ничего не менялось
+    markSent(sent) {
+      if (sent.main && Y.main === sent.main) Y.main = 0;
+      Object.keys(sent.days).forEach(k => { if (Y.days[k] === sent.days[k]) delete Y.days[k]; });
+      saveSync();
+    },
+    // при первом входе в новый аккаунт отправляем всё, что накопилось без аккаунта
+    markAllDirty() {
+      if (S.profile) Y.main = S.u = S.u || Date.now();
+      Object.keys(S.days).forEach(k => { const d = S.days[k]; d.u = d.u || Date.now(); Y.days[k] = d.u; });
+      saveSync(); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+    },
+    get lastPull() { return Y.lastPull; },
+    // данные из облака: берём то, что новее (по отметке времени)
+    importRemote(main, days) {
+      let changed = false, maxU = Y.lastPull;
+      if (main && main.profile && (!S.profile || (main.u || 0) > (S.u || 0))) {
+        S.profile = main.profile; S.weights = main.weights || []; S.program = main.program || S.program;
+        S.chat = main.chat || []; S.createdAt = main.createdAt || S.createdAt; S.u = main.u || 0;
+        if (Y.main && Y.main <= S.u) Y.main = 0;
+        changed = true;
+      } else if (S.profile && (!main || (S.u || 0) > (main.u || 0))) {
+        Y.main = S.u = S.u || Date.now();   // на устройстве новее — отправим
+      }
+      (days || []).forEach(([k, d]) => {
+        maxU = Math.max(maxU, d.u || 0);
+        const local = S.days[k];
+        if (!local || (d.u || 0) > (local.u || 0)) {
+          S.days[k] = { water: d.water || 0, meals: d.meals || [], workouts: d.workouts || [], u: d.u || 0 };
+          if (Y.days[k] && Y.days[k] <= (d.u || 0)) delete Y.days[k];
+          changed = true;
+        }
+      });
+      Y.lastPull = maxU; saveSync();
+      if (changed) save();
+      return changed;
     }
   };
 
@@ -158,6 +220,7 @@
     get profile() { return S.profile; },
     dayKey, addDays, parseKey, peek, totals, norms, weights, currentWeight, average,
     program, doneList, nextIndex, weekWorkouts, weekStart, streak, activeDaysStreak, workoutsBetween,
-    ...A
+    ...A,
+    sync: Sync
   };
 })();
