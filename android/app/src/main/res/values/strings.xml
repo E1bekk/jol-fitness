@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JOL Fitness</string>
+    <string name="title_activity_main">JOL Fitness</string>
+    <string name="package_name">com.jolfitness.app</string>
+    <string name="custom_url_scheme">com.jolfitness.app</string>
+</resources>

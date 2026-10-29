@@ -1,0 +1,26 @@
+# ===== JOL Fitness: что НЕ отправлять в GitHub =====
+
+# Зависимости npm (ставятся командой npm install)
+node_modules/
+
+# Папка www собирается скриптом из файлов сайта — в Git не нужна
+www/
+
+# Android: временные файлы сборки и локальные настройки
+android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+android/.idea/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+
+# Ключ подписи и пароли — НИКОГДА не в Git!
+*.jks
+*.keystore
+android/keystore.properties
+
+# Служебное
+.vercel/
+Thumbs.db
+.DS_Store

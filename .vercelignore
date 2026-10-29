@@ -1,0 +1,6 @@
+# Что НЕ нужно выкладывать на сайт (Vercel): файлы Android-приложения и служебные скрипты.
+android
+www
+scripts
+assets
+*.md

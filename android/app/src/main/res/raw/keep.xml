@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Иконку уведомлений плагин находит по имени (ic_stat_jf из capacitor.config.json),
+     поэтому сжатие ресурсов в release-сборке не должно её удалять. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_jf,@drawable/splash" />
