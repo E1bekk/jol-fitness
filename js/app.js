@@ -17,6 +17,24 @@
   const avatar = () => `<span class="avatar">${esc(((JF.profile && JF.profile.name) || '?').trim().charAt(0).toUpperCase())}</span>`;
   const cupSvg = cls => `<svg class="${cls}" viewBox="0 0 35 43" aria-hidden="true"><use href="#cup"/></svg>`;
 
+  // ===== Экран входа/анкеты: слева (сверху на телефоне) карточка с фото, как на главной =====
+  function authLayout(hero, body) {
+    return `<div class="auth">
+      <section class="auth-hero">
+        <div class="hero-photo" aria-hidden="true"></div>
+        <div class="auth-hero-in">
+          <div class="auth-brand"><svg viewBox="0 0 45 45" aria-hidden="true">${logoDots('#d7f17c')}</svg>JOL Fitness</div>
+          <div>
+            <h2>${hero.title}</h2>
+            ${hero.sub ? `<p class="auth-sub">${hero.sub}</p>` : ''}
+            <div class="glass">${(hero.pills || [['spark', 'ИИ-тренер'], ['camera', 'Калории по фото'], ['dumbbell', 'Тренировки дома']]).map(([ic, t]) => `<span>${icon(ic)}${t}</span>`).join('')}</div>
+          </div>
+        </div>
+      </section>
+      <section class="auth-card"><div class="auth-card-in">${body}</div></section>
+    </div>`;
+  }
+
   // ===== Логотип: ромб из точек =====
   function logoDots(color) {
     let s = '';
@@ -334,11 +352,18 @@
   // ---------- Онбординг ----------
   SCREENS.start = function () {
     const s = onb, d = s.d, total = 5;
+    const HERO = [
+      { title: 'Твой ИИ-тренер в телефоне', sub: 'Тренировки дома, план питания и подсчёт калорий по фото — всё в одном приложении.' },
+      { title: 'Давай знакомиться', sub: 'Тренер будет обращаться к тебе по имени.', pills: [['user', 'Шаг 1 из 4'], ['shield', 'Данные под защитой']] },
+      { title: 'Посчитаем твою норму', sub: 'По формуле Миффлина — Сан-Жеора, как у диетологов.', pills: [['scale', 'Шаг 2 из 4'], ['flame', 'Калории и БЖУ']] },
+      { title: 'К чему идём?', sub: 'Цель меняет калории и программу тренировок.', pills: [['flame', 'Шаг 3 из 4'], ['activity', 'Своя программа']] },
+      { title: 'Последний вопрос', sub: 'Учтём, сколько ты двигаешься в обычную неделю.', pills: [['run', 'Шаг 4 из 4'], ['drop', 'Норма воды']] },
+      { title: 'Всё готово!', sub: 'Начни с первой тренировки или отметь стакан воды.', pills: [['check', 'План готов'], ['spark', 'ИИ-тренер ждёт']] }
+    ];
     const steps = `<div class="onb-steps" aria-hidden="true">${Array.from({ length: total }, (_, i) => `<i class="${i < s.step ? 'on' : ''}"></i>`).join('')}</div>`;
     let body = '';
     if (s.step === 0) {
-      body = `<div class="onb-hero"><svg class="logo" viewBox="0 0 45 45" aria-hidden="true">${logoDots('#d7f17c')}</svg>
-          <h1>JOL Fitness</h1><p>Твой ИИ-тренер в телефоне: тренировки дома, план питания и подсчёт калорий по фото.</p></div>
+      body = `<h1>Добро пожаловать!</h1><p class="lead">Ответь на 4 коротких вопроса — посчитаем твою норму калорий, белков и воды и подберём программу тренировок.</p>
         <div class="feat"><span class="chip">${icon('spark')}</span>ИИ-тренер ответит на любой вопрос и составит план</div>
         <div class="feat"><span class="chip">${icon('camera')}</span>Сфотографируй еду — узнаешь калории и БЖУ</div>
         <div class="feat"><span class="chip">${icon('dumbbell')}</span>Программы тренировок без инвентаря</div>
@@ -389,7 +414,7 @@
     }
     return {
       top: false, noRail: true, cls: 'page',
-      html: `<div class="onb"><div class="onb-card">${body}</div></div>`,
+      html: authLayout(HERO[Math.min(s.step, 5)], body),
       mount(v) {
         window.JF_onBack = () => { if (onb.step > 0) { collect(v); onb.step--; refresh(); return true; } return false; };
         v.onclick = e => {
@@ -1327,7 +1352,8 @@
       : 'Введи email и пароль — мы вернём твой профиль, дневник, вес и тренировки.';
     return {
       top: false, noRail: true, cls: 'page',
-      html: `<div class="onb"><div class="onb-card">
+      html: authLayout(isUp ? { title: afterOnb ? 'Не потеряй свой прогресс' : 'Твои данные — в облаке', sub: 'Вход с любого телефона и ноутбука. Переустановка приложения больше не страшна.', pills: [['shield', 'Только у тебя'], ['refresh', 'Синхронизация']] }
+          : { title: 'С возвращением!', sub: 'Войди, и твой профиль, дневник, вес и тренировки вернутся.', pills: [['user', 'Твой аккаунт'], ['refresh', 'Всё на месте']] }, `
         ${afterOnb ? '' : `<button class="back-b" data-auth-back>${icon('chevL')}Назад</button>`}
         <h1>${title}</h1><p class="lead">${lead}</p>
         ${!isUp && JF.profile ? `<div class="note warn" style="margin-bottom:1rem">${icon('info')}<div>Если в аккаунте уже есть данные, они заменят то, что сейчас на этом устройстве.</div></div>` : ''}
@@ -1341,8 +1367,7 @@
         ${isUp ? (afterOnb ? `<button class="btn btn-ghost btn-block" data-later style="margin-top:.625rem">Позже</button>` : '')
           : `<button class="btn btn-ghost btn-block" data-reset style="margin-top:.625rem">Забыли пароль?</button>`}
         <p class="disclaimer" style="margin-top:1rem">${isUp ? `Уже есть аккаунт? <a href="#/login">Войти</a>` : `Нет аккаунта? <a href="${JF.profile ? '#/signup' : '#/start'}">Создать новый</a>`}</p>
-        <p class="disclaimer">Продолжая, ты соглашаешься с <a href="privacy.html">политикой конфиденциальности</a>.</p>
-      </div></div>`,
+        <p class="disclaimer">Продолжая, ты соглашаешься с <a href="privacy.html">политикой конфиденциальности</a>.</p>`),
       mount(v) {
         const email = $('#a-email', v), pw = $('#a-pw', v), btn = $('#a-go', v);
         if (window.innerWidth > 620) email.focus();
