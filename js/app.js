@@ -1248,14 +1248,16 @@
           if (e.target.closest('[data-acc-signup]')) return go('#/signup');
           if (e.target.closest('[data-acc-login]')) return go('#/login');
           if (e.target.closest('[data-acc-sync]')) { await ACC().push(); toast(ACC().status.error ? 'Не получилось: ' + ACC().status.error : 'Сохранено в облаке'); return refresh(); }
-          if (e.target.closest('[data-acc-logout]')) {
-            const ok = await UI.confirm({ title: 'Выйти из аккаунта?', ok: 'Выйти',
-              text: 'Твои данные останутся в облаке, а с этого устройства удалятся. Чтобы вернуть их, просто войди снова.' });
+          const lo = e.target.closest('[data-acc-logout],[data-acc-switch]');
+          if (lo) {
+            const sw = lo.hasAttribute('data-acc-switch');
+            const ok = await UI.confirm({ title: sw ? 'Войти в другой аккаунт?' : 'Выйти из аккаунта?', ok: sw ? 'Продолжить' : 'Выйти',
+              text: 'Данные текущего аккаунта останутся в облаке, а с этого устройства удалятся. Чтобы вернуть их, просто войди в него снова.' });
             if (!ok) return;
             try { await ACC().signOut(); } catch (err) { return toast(ACC().errText(err)); }
             if (window.JF_reminders) await JF_reminders.removeAll();
             JF.wipe(); onb = { step: 0, d: {} }; pendingScan = null;
-            location.replace('#/start'); toast('Ты вышел из аккаунта');
+            location.replace(sw ? '#/login' : '#/start'); toast(sw ? 'Войди в другой аккаунт или создай новый' : 'Ты вышел из аккаунта');
             return;
           }
           if (e.target.closest('[data-del-acc]')) return deleteAccountSheet();
@@ -1289,6 +1291,7 @@
     const line = s.error ? `не сохранено: ${esc(s.error)}` : s.pending ? 'ждёт отправки в облако' : `сохранено в облаке ${ago(s.lastSync)}`;
     return `<div class="set-row" style="cursor:default"><span class="chip">${icon('user')}</span><span class="li-main"><b>${esc(A.email)}</b><small>${line}</small></span>
         <button class="icon-btn" data-acc-sync aria-label="Сохранить сейчас">${icon('refresh')}</button></div>
+      <button class="set-row" data-acc-switch><span class="chip">${icon('refresh')}</span>Войти в другой аккаунт<span class="end">${icon('chevR')}</span></button>
       <button class="set-row" data-acc-logout><span class="chip">${icon('logout')}</span>Выйти из аккаунта<span class="end">${icon('chevR')}</span></button>`;
   }
   function deleteAccountSheet() {
@@ -1337,7 +1340,7 @@
         </form>
         ${isUp ? (afterOnb ? `<button class="btn btn-ghost btn-block" data-later style="margin-top:.625rem">Позже</button>` : '')
           : `<button class="btn btn-ghost btn-block" data-reset style="margin-top:.625rem">Забыли пароль?</button>`}
-        <p class="disclaimer" style="margin-top:1rem">${isUp ? `Уже есть аккаунт? <a href="#/login">Войти</a>` : `Нет аккаунта? <a href="${JF.profile ? '#/signup' : '#/start'}">${JF.profile ? 'Создать' : 'Начать заново'}</a>`}</p>
+        <p class="disclaimer" style="margin-top:1rem">${isUp ? `Уже есть аккаунт? <a href="#/login">Войти</a>` : `Нет аккаунта? <a href="${JF.profile ? '#/signup' : '#/start'}">Создать новый</a>`}</p>
         <p class="disclaimer">Продолжая, ты соглашаешься с <a href="privacy.html">политикой конфиденциальности</a>.</p>
       </div></div>`,
       mount(v) {
