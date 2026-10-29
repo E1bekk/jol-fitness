@@ -804,7 +804,7 @@
     s.status = 'loading'; s.error = '';
     if (parse().name === 'scan') refresh();
     try {
-      const data = await api('/api/scan', { image: s.img.split(',')[1], mimeType: 'image/jpeg' }, 50000);
+      const data = await api('/api/scan', { image: s.img.split(',')[1], mimeType: 'image/jpeg' }, 62000);
       if (pendingScan !== s) return;
       s.items = (data.items || []).map(it => {
         const g = Math.max(1, +it.grams || 100);

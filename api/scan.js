@@ -4,6 +4,10 @@ const cors = require('./_cors');
 const tooMany = require('./_limit');
 const { askAI } = require('./_ai');
 
+// Для фото сначала быстрые модели: распознать еду им хватает, а ответ приходит в 2–3 раза быстрее.
+const SCAN_MODELS = (process.env.SCAN_MODELS || 'gemini-3.5-flash-lite,gemini-3.8-flash,gemini-2.5-flash,gemini-flash-lite-latest')
+    .split(',').map(s => s.trim()).filter(Boolean);
+
 const SYSTEM = [
     'Ты — нутрициолог. По фото еды определи все блюда и продукты и оцени их вес и пищевую ценность.',
     'Учитывай кухню Кыргызстана и Центральной Азии: плов, лагман, манты, бешбармак, самса, боорсок, куурдак, чучвара, шорпо, ашлянфу, лепёшка (нан), курут.',
@@ -33,7 +37,7 @@ module.exports = async (req, res) => {
     if (image.length > 4_000_000) return res.status(413).json({ ok: false, error: 'Image too large' });
 
     try {
-        const ai = await askAI(SYSTEM, [{ role: 'user', content: 'Что на фото? Ответь JSON.', images: [{ mimeType, data: image }] }], 700);
+        const ai = await askAI(SYSTEM, [{ role: 'user', content: 'Что на фото? Ответь JSON.', images: [{ mimeType, data: image }] }], 700, 55000, { geminiModels: SCAN_MODELS, timeoutMs: 22000 });
         const data = parseJson(ai.text);
         const items = (Array.isArray(data.items) ? data.items : []).slice(0, 10).map(it => ({
             name: String(it.name || 'Блюдо').slice(0, 60),
@@ -42,7 +46,7 @@ module.exports = async (req, res) => {
         })).filter(it => it.kcal > 0 || it.grams > 0);
         return res.status(200).json({ ok: true, items, comment: String(data.comment || '').slice(0, 200) });
     } catch (error) {
-        console.error('scan error:', error.message, error.details || '');
+        console.error('scan error:', error.message, error.details || '');  // подробности — в Vercel → Logs
         return res.status(503).json({ ok: false, error: 'AI unavailable' });
     }
 };

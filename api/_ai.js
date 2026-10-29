@@ -14,7 +14,7 @@ async function withTimeout(promise, ms) {
     try { return await Promise.race([promise, timeout]); } finally { clearTimeout(t); }
 }
 
-async function askGemini(model, system, messages, maxTokens) {
+async function askGemini(model, system, messages, maxTokens, timeoutMs) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) throw new Error('GEMINI_API_KEY not set');
     const base = {
@@ -37,7 +37,7 @@ async function askGemini(model, system, messages, maxTokens) {
         const r = await withTimeout(fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, generationConfig }) }
-        ), 20000);
+        ), timeoutMs || 20000);
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
             lastErr = new Error(`Gemini ${model} ${r.status}: ${(data.error && data.error.message) || ''}`.slice(0, 300));
@@ -76,29 +76,66 @@ async function askGroq(model, system, messages, maxTokens) {
     return out;
 }
 
+
+// Groq с картинками (запасной вариант для сканера еды, если Gemini перегружен)
+const GROQ_VISION_MODELS = (process.env.GROQ_VISION_MODELS || 'meta-llama/llama-4-scout-17b-16e-instruct,meta-llama/llama-4-maverick-17b-128e-instruct')
+    .split(',').map(s => s.trim()).filter(Boolean);
+
+async function askGroqVision(model, system, messages, maxTokens, timeoutMs) {
+    const key = process.env.GROQ_API_KEY;
+    if (!key) throw new Error('GROQ_API_KEY not set');
+    const body = {
+        model,
+        messages: [{ role: 'system', content: system }, ...messages.map(m => ({
+            role: m.role,
+            content: [
+                { type: 'text', text: m.content || ' ' },
+                ...(m.images || []).map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.data}` } }))
+            ]
+        }))],
+        temperature: 0.3,
+        max_tokens: maxTokens
+    };
+    const r = await withTimeout(fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify(body)
+    }), timeoutMs || 25000);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`Groq ${model} ${r.status}: ${(data.error && data.error.message) || ''}`.slice(0, 300));
+    const out = ((((data.choices || [])[0] || {}).message || {}).content || '').trim();
+    if (!out) throw new Error(`Groq ${model}: empty answer`);
+    return out;
+}
+
 // Спрашиваем по очереди: Gemini (модели по списку) -> Groq (модели по списку).
 // Фото понимает только Gemini, поэтому с картинками Groq не используется.
 // deadlineMs — общий предел времени, чтобы запрос не висел дольше, чем живёт функция Vercel.
-async function askAI(system, messages, maxTokens = 700, deadlineMs = 45000) {
+// opts.geminiModels — свой порядок моделей Gemini (например, для фото — сначала быстрая),
+// opts.timeoutMs — сколько ждать одну модель.
+async function askAI(system, messages, maxTokens = 700, deadlineMs = 45000, opts = {}) {
     const started = Date.now();
     const timeLeft = () => deadlineMs - (Date.now() - started);
     const hasImages = messages.some(m => m.images && m.images.length);
-    const errors = [];
-    for (const m of GEMINI_MODELS) {
-        if (timeLeft() < 3000) break;
-        try { return { text: await askGemini(m, system, messages, maxTokens), provider: 'gemini:' + m }; }
-        catch (e) { errors.push(e.message); }
+    const per = opts.timeoutMs || 20000;
+    const gem = (opts.geminiModels || GEMINI_MODELS).map(m => ({ name: 'gemini:' + m, run: t => askGemini(m, system, messages, maxTokens, t) }));
+    let order;
+    if (hasImages) {
+        // фото: две модели Gemini, потом Groq с картинками, потом остальные Gemini
+        const gv = GROQ_VISION_MODELS.map(m => ({ name: 'groq:' + m, run: t => askGroqVision(m, system, messages, maxTokens, t) }));
+        order = [...gem.slice(0, 2), ...gv, ...gem.slice(2)];
+    } else {
+        const gq = GROQ_MODELS.map(m => ({ name: 'groq:' + m, run: () => askGroq(m, system, messages, maxTokens) }));
+        order = [...gem, ...gq];
     }
-    if (!hasImages) {
-        for (const m of GROQ_MODELS) {
-            if (timeLeft() < 3000) break;
-            try {
-                const text = await askGroq(m, system, messages, maxTokens);
-                console.warn('AI fallback to Groq, Gemini errors:', errors); // видно в логах Vercel
-                return { text, provider: 'groq:' + m };
-            }
-            catch (e) { errors.push(e.message); }
-        }
+    const errors = [];
+    for (const step of order) {
+        if (timeLeft() < 3000) break;
+        try {
+            const text = await step.run(Math.min(per, timeLeft() - 1000));
+            if (errors.length) console.warn('AI fallback to', step.name, 'after errors:', errors); // видно в логах Vercel
+            return { text, provider: step.name };
+        } catch (e) { errors.push(e.message); }
     }
     const err = new Error('All AI providers failed');
     err.details = errors;
@@ -117,4 +154,4 @@ function plainText(s) {
         .trim();
 }
 
-module.exports = { askAI, plainText, askGemini, askGroq, GEMINI_MODELS, GROQ_MODELS };
+module.exports = { askAI, plainText, askGemini, askGroq, askGroqVision, GEMINI_MODELS, GROQ_MODELS, GROQ_VISION_MODELS };
