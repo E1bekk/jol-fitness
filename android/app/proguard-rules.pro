@@ -33,3 +33,7 @@
 }
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
 -dontwarn com.getcapacitor.**
+
+# Шаги из Health Connect (плагин @capgo/capacitor-health)
+-keep class app.capgo.plugin.health.** { *; }
+-dontwarn app.capgo.plugin.health.**

@@ -47,6 +47,10 @@
     scale: S('<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M8.5 9.5a5 5 0 0 1 7 0L12 13Z"/>'),
     refresh: S('<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.5L20 16M20 20v-4h-4"/>'),
     lock: S('<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
+    star: S('<path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-2.9-5.4 2.9 1.1-6L3.2 9.6l6.1-.8Z"/>'),
+    moonO: S('<path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/>'),
+    sun: S('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'),
+    steps: S('<path d="M8.5 3.5c1.7 0 2.7 1.7 2.7 4.2s-.9 4.3-2.6 4.3-2.6-1.9-2.6-4.3 1-4.2 2.5-4.2Z"/><path d="M6.2 14.5h4.6l-.5 3a2.2 2.2 0 0 1-4.3-.4Z"/><path d="M15.5 6.5c1.5 0 2.5 1.7 2.5 4.1s-.9 4.2-2.5 4.2-2.6-1.8-2.6-4.2 1-4.1 2.6-4.1Z"/><path d="M13.3 17.4h4.6l-.4 2.6a2.2 2.2 0 0 1-4.3-.2Z"/>'),
     skip: F('<path d="M5 5.3c0-.9 1-1.4 1.7-.9l8.2 6.1c.6.5.6 1.4 0 1.9l-8.2 6.1c-.7.5-1.7 0-1.7-.9Z"/><rect x="16.5" y="4.5" width="2.8" height="15" rx="1.2"/>')
   };
   window.icon = n => ICONS[n] || '';
@@ -61,12 +65,12 @@
 
   // ===== Уведомление внизу экрана =====
   let toastEl;
-  function toast(text) {
+  function toast(text, ms) {
     if (!toastEl) { toastEl = document.createElement('div'); toastEl.className = 'toast'; toastEl.setAttribute('role', 'status'); document.body.appendChild(toastEl); }
     toastEl.textContent = text;
     toastEl.classList.add('show');
     clearTimeout(toastEl._t);
-    toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
+    toastEl._t = setTimeout(() => toastEl.classList.remove('show'), ms || 2200);
   }
 
   // ===== Нижняя панель (sheet) =====
@@ -131,5 +135,43 @@
     try { if (navigator.vibrate) navigator.vibrate(ms > 300 ? [120, 80, 120] : 60); } catch (e) {}
   }
 
-  window.UI = { esc, num, dec, plural, dateShort, MONTHS, toast, openSheet, closeTop, confirm: confirmBox, beep };
+  // ===== Конфетти (конец тренировки, норма воды) =====
+  function confetti() {
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const c = document.createElement('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.className = 'confetti'; c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+    document.body.appendChild(c);
+    const g = c.getContext('2d'), colors = ['#d2e659', '#3ea2e8', '#94a103', '#0179da', '#d7f17c', '#5db0e9'];
+    const parts = Array.from({ length: 90 }, () => ({
+      x: c.width * (0.2 + Math.random() * 0.6), y: c.height * 0.35, vx: (Math.random() - 0.5) * 14 * dpr, vy: (-6 - Math.random() * 10) * dpr,
+      w: (5 + Math.random() * 6) * dpr, h: (8 + Math.random() * 8) * dpr, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4, col: colors[(Math.random() * colors.length) | 0]
+    }));
+    const t0 = performance.now();
+    (function step(now) {
+      const t = now - t0;
+      g.clearRect(0, 0, c.width, c.height);
+      parts.forEach(p => {
+        p.vy += 0.35 * dpr; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.globalAlpha = Math.max(0, 1 - t / 2200);
+        g.fillStyle = p.col; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore();
+      });
+      if (t < 2200) requestAnimationFrame(step); else c.remove();
+    })(t0);
+  }
+
+  // ===== Тема: светлая / тёмная / как в системе =====
+  const darkMQ = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+  function applyTheme(theme) {
+    const dark = theme === 'dark' || (theme !== 'light' && darkMQ && darkMQ.matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = dark ? '#0b1216' : '#f0f8fc';
+    try {
+      const SB = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SystemBars;
+      if (SB && SB.setStyle) SB.setStyle({ style: dark ? 'DARK' : 'LIGHT' });
+    } catch (e) {}
+    return dark;
+  }
+  if (darkMQ && darkMQ.addEventListener) darkMQ.addEventListener('change', () => applyTheme((window.JF && JF.settings.theme) || 'system'));
+
+  window.UI = { esc, num, dec, plural, dateShort, MONTHS, toast, openSheet, closeTop, confirm: confirmBox, beep, confetti, applyTheme };
 })();

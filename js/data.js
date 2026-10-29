@@ -88,8 +88,14 @@
       ] }
   ];
 
+  // Программы, которые составил ИИ-тренер (хранятся в данных пользователя, см. store.js)
+  let CUSTOM = [];
+  const setCustom = list => { CUSTOM = Array.isArray(list) ? list : []; };
+  const all = () => PROGRAMS.concat(CUSTOM);
+  const find = pid => all().find(x => x.id === pid);
+
   function workout(pid, idx) {
-    const p = PROGRAMS.find(x => x.id === pid) || PROGRAMS[0];
+    const p = find(pid) || PROGRAMS[0];
     const t = p.templates[idx % p.templates.length];
     const level = Math.floor(idx / p.templates.length);        // какой круг шаблонов
     const k = 1 + 0.12 * level;
@@ -165,5 +171,5 @@
       text: '7–10 тысяч шагов в день сжигают больше калорий, чем кажется. Ходи пешком, поднимайся по лестнице, разминайся каждый час.' }
   ];
 
-  window.JF_DATA = { EXERCISES, PROGRAMS, FOODS, TIPS, workout, plan, exSeconds };
+  window.JF_DATA = { EXERCISES, PROGRAMS, FOODS, TIPS, workout, plan, exSeconds, setCustom, all, find };
 })();

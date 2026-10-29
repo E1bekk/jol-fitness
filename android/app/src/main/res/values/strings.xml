@@ -4,4 +4,6 @@
     <string name="title_activity_main">JOL Fitness</string>
     <string name="package_name">com.jolfitness.app</string>
     <string name="custom_url_scheme">com.jolfitness.app</string>
+    <!-- Политика конфиденциальности для окна Health Connect -->
+    <string name="health_connect_privacy_policy_url">https://jol-fitness.vercel.app/privacy.html</string>
 </resources>

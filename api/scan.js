@@ -3,6 +3,7 @@
 const cors = require('./_cors');
 const tooMany = require('./_limit');
 const { askAI } = require('./_ai');
+const parseJson = require('./_json');
 
 // Для фото сначала быстрые модели: распознать еду им хватает, а ответ приходит в 2–3 раза быстрее.
 const SCAN_MODELS = (process.env.SCAN_MODELS || 'gemini-3.5-flash-lite,gemini-3.8-flash,gemini-2.5-flash,gemini-flash-lite-latest')
@@ -17,12 +18,6 @@ const SYSTEM = [
     'name — по-русски, коротко. Числа — без единиц измерения. Если еды на фото нет — верни {"items":[],"comment":"На фото не видно еды"}.'
 ].join('\n');
 
-function parseJson(text) {
-    const s = String(text || '').replace(/```(?:json)?/g, '');
-    const a = s.indexOf('{'), b = s.lastIndexOf('}');
-    if (a < 0 || b < a) throw new Error('no json');
-    return JSON.parse(s.slice(a, b + 1));
-}
 const n = (v, max) => { const x = Math.round(Number(v) * 10) / 10; return isFinite(x) && x >= 0 ? Math.min(x, max) : 0; };
 
 module.exports = async (req, res) => {

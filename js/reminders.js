@@ -30,7 +30,9 @@
       ['🍽 Время поесть', 'Сфотографируй тарелку — ИИ посчитает калории и БЖУ.'],
       ['🍽 Запиши, что ты съел', 'Так проще держать норму калорий и белка.']] },
     weigh: { name: 'Взвешивание', icon: 'scale', msgs: [
-      ['⚖️ Время взвеситься', 'Взвешивайся утром натощак — так цифры честнее. Запиши вес в «Прогрессе».']] }
+      ['⚖️ Время взвеситься', 'Взвешивайся утром натощак — так цифры честнее. Запиши вес в «Прогрессе».']] },
+    report: { name: 'Отчёт недели', icon: 'chart', msgs: [
+      ['📊 Подведём итоги недели?', 'ИИ-тренер разберёт твою неделю и даст советы. Открой «Прогресс» → «Отчёт недели».']] }
   };
 
   function settings() {
@@ -134,7 +136,7 @@
         const m = TYPES[it.a.type].msgs[(it.at.getDate() + k) % TYPES[it.a.type].msgs.length];
         return {
           id: ID_MIN + it.ai * 20 + it.d, title: m[0], body: m[1], channelId: CHANNEL,
-          schedule: { at: it.at, allowWhileIdle: exact }, extra: { route: it.a.type === 'water' ? '/home' : it.a.type === 'meal' ? '/food' : it.a.type === 'weigh' ? '/progress' : '/workouts' }
+          schedule: { at: it.at, allowWhileIdle: exact }, extra: { route: ({ water: '/home', meal: '/food', weigh: '/progress', report: '/progress', workout: '/workouts' })[it.a.type] || '/home' }
         };
       });
       if (list.length) await LN.schedule({ notifications: list });

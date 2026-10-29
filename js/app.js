@@ -53,6 +53,14 @@
   let onb = { step: 0, d: {} };
   let pendingScan = null;      // { img, status:'loading'|'done'|'error', items, comment, error }
   let coachBusy = false;
+  let cupPour = null;          // какие стаканы только что наполнились (для анимации)
+  let tipSwap = false;         // совет только что сменился (для анимации)
+  function setWater(nw) {
+    const before = JF.peek().water, n = JF.norms();
+    JF.setWater(nw);
+    cupPour = nw > before ? [before, nw] : null;
+    if (before < n.glasses && nw >= n.glasses) { UI.confetti(); toast('Норма воды на сегодня выполнена! 💧'); }
+  }
 
   const top = $('#top'), view = $('#view'), rail = $('.rail');
 
@@ -70,6 +78,7 @@
     if (!JF.profile && !OPEN.includes(r.name)) { location.replace('#/start'); return; }
     if (JF.profile && r.name === 'start') { location.replace('#/home'); return; }
     const sy = window.scrollY, vy = view.scrollTop;
+    if (keepScroll !== true) while (UI.closeTop()) { /* при переходе закрываем открытые панели */ }
     if (current && current.destroy) current.destroy();
     window.JF_onBack = null;
     const screen = SCREENS[r.name] || SCREENS.home;
@@ -90,10 +99,32 @@
     view.onclick = null; view.oninput = null; view.onchange = null; view.onkeydown = null;
     if (current.mount) current.mount(view);
     if (keepScroll === true) { window.scrollTo(0, sy); view.scrollTop = vy; }
-    else { window.scrollTo(0, 0); view.scrollTop = 0; }
+    else { window.scrollTo(0, 0); view.scrollTop = 0; enterAnim(); }
+    cupPour = null; tipSwap = false;
     closeMenu();
   }
   const refresh = () => render(true);
+  // Появление экрана: карточки «всплывают» по очереди, столбики растут, числа досчитываются
+  function enterAnim() {
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
+    $$('.card,.hero,.hydra,.prog-hero,.scan-cta,.auth-hero,.auth-card,.pl-card', view).slice(0, 14)
+      .forEach((el, i) => { el.style.animationDelay = (i * 45) + 'ms'; });
+    $$('[data-count]', view).forEach(countUp);
+    clearTimeout(enterAnim.t); enterAnim.t = setTimeout(() => view.classList.remove('enter'), 1600);
+  }
+  function countUp(el) {
+    const to = parseFloat(el.getAttribute('data-count')) || 0, d = +el.getAttribute('data-dec') || 0;
+    if (!to) return;
+    const t0 = performance.now(), dur = 750;
+    const fmt = v => d ? dec(v, d) : num(v);
+    (function step(now) {
+      if (!el.isConnected) return;
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = fmt(to * e);
+      if (k < 1) requestAnimationFrame(step); else el.textContent = fmt(to);
+    })(t0);
+  }
   window.addEventListener('hashchange', () => render());
   document.addEventListener('jf:resume', () => { if (current && current.live) refresh(); });
   document.addEventListener('jf:resume-data', () => { if (current && current.live) refresh(); });
@@ -143,7 +174,7 @@
       ['ИИ-тренер', '#/coach', 'chat'], ['Прогресс', '#/progress', 'chart'], ['Вес', '#/progress', 'scale'], ['Напоминания', '#/reminders', 'bell'],
       ['Профиль', '#/profile', 'gear'], ['Помощь', '#/help', 'help']]
       .forEach(([n, h, ic]) => { if (n.toLowerCase().includes(q)) res.push(`<button data-q="go:${h}">${icon(ic)}${esc(n)}<small>раздел</small></button>`); });
-    D.PROGRAMS.forEach(p => { if (p.title.toLowerCase().includes(q)) res.push(`<button data-q="go:#/program/${p.id}">${icon('activity')}${esc(p.title)}<small>программа</small></button>`); });
+    D.all().forEach(p => { if (p.title.toLowerCase().includes(q)) res.push(`<button data-q="go:#/program/${p.id}">${icon('activity')}${esc(p.title)}<small>программа</small></button>`); });
     Object.keys(D.EXERCISES).forEach(id => { const ex = D.EXERCISES[id]; if (ex.name.toLowerCase().includes(q)) res.push(`<button data-q="ex:${id}">${icon(ex.icon)}${esc(ex.name)}<small>упражнение</small></button>`); });
     D.FOODS.forEach((f, i) => { if (f.name.toLowerCase().includes(q)) res.push(`<button data-q="food:${i}">${icon('apple')}${esc(f.name)}<small>${f.kcal} ккал/100 г</small></button>`); });
     pop.innerHTML = res.slice(0, 12).join('') || '<div class="empty">Ничего не нашлось</div>';
@@ -178,14 +209,14 @@
     const rem = n.kcal - t.kcal;
     const on = Math.min(30, Math.round(t.kcal / n.kcal * 30));
     let bars = '';
-    for (let k = 0; k < 30; k++) bars += `<i${k < on ? ' class="on"' : ''}></i>`;
+    for (let k = 0; k < 30; k++) bars += `<i${k < on ? ' class="on"' : ''} style="--i:${k}"></i>`;
     return `<article class="card card--md pad ${tap ? 'tap' : ''}" ${tap ? 'data-go-card="#/food"' : ''}>
       <div class="c-head">
         <div class="c-title"><span class="chip">${icon('flame')}</span>Калории</div>
         <div class="c-val">${num(n.kcal)}<span>ккал</span></div>
       </div>
       <div class="c-sub"><span>${rem >= 0 ? `Осталось ${num(rem)} ккал` : `Сверх нормы на ${num(-rem)} ккал`}</span><span>Дневная норма</span></div>
-      <div class="kcal-big">${num(t.kcal)}<span>/ккал</span></div>
+      <div class="kcal-big"><em data-count="${t.kcal}">${num(t.kcal)}</em><span>/ккал</span></div>
       <div class="scale"><span>0</span><span>${num(n.kcal)}</span></div>
       <div class="bars ${t.kcal > n.kcal ? 'over' : ''}" role="img" aria-label="${num(t.kcal)} из ${num(n.kcal)} ккал">${bars}</div>
       <div class="macros">
@@ -242,7 +273,7 @@
       <div class="c-sub"><span>Здоровый вес: ${n.healthyMin}–${n.healthyMax} кг</span><span>Твой рост</span></div>
       ${sparkSvg()}
       <div class="w-foot">
-        <div class="w-big">${dec(cw)}<span>кг</span></div>
+        <div class="w-big"><em data-count="${cw}" data-dec="1">${dec(cw)}</em><span>кг</span></div>
         <p class="w-note">Недельный план<br>выполнен на ${pct}%<b>${pct >= 100 ? 'Отлично!' : pct >= 34 ? 'Так держать!' : 'Ты справишься!'}</b></p>
       </div>
     </article>`;
@@ -256,12 +287,13 @@
   // ---------- Главная ----------
   SCREENS.home = function () {
     const p = JF.profile, n = JF.norms(), day = JF.peek();
-    const pid = JF.program(), prog = D.PROGRAMS.find(x => x.id === pid), next = JF.nextIndex(pid), done = JF.doneList(pid).length;
+    const pid = JF.program(), prog = D.find(pid), next = JF.nextIndex(pid), done = JF.doneList(pid).length;
     // вода
     let cups = '';
     for (let i = 0; i < 24; i++) {
       const cls = i < day.water ? 'full' : i < n.glasses ? 'empty' : 'extra';
-      cups += `<button data-cup="${i}" aria-label="${i < day.water ? 'Убрать стакан' : 'Отметить стакан'} ${i + 1}">${cupSvg(cls)}</button>`;
+      const pour = cls === 'full' && cupPour && i >= cupPour[0] && i < cupPour[1];
+      cups += `<button data-cup="${i}" class="${pour ? 'pop' : ''}" aria-label="${i < day.water ? 'Убрать стакан' : 'Отметить стакан'} ${i + 1}">${pour ? cupSvg('empty') + cupSvg('full pour') : cupSvg(cls)}</button>`;
     }
     const days = waterRange === 'D' ? 1 : waterRange === 'W' ? 7 : 30;
     const liters = (days === 1 ? day.water : JF.average(days, d => d.water)) * 0.25;
@@ -302,7 +334,7 @@
           <div class="range" role="group" aria-label="Период">
             ${['D', 'W', 'M'].map(r => `<button data-range="${r}" aria-pressed="${waterRange === r}" aria-label="${r === 'D' ? 'Сегодня' : r === 'W' ? 'Неделя' : 'Месяц'}">${r === 'D' ? 'Д' : r === 'W' ? 'Н' : 'М'}</button>`).join('')}
           </div>
-          <div class="liters"><em>${waterRange === 'D' ? 'сегодня' : 'в среднем'}<br>норма ${dec(n.waterMl / 1000, 2)} л</em><b>${dec(liters, 2)}л</b><span>/День</span></div>
+          <div class="liters"><em>${waterRange === 'D' ? 'сегодня' : 'в среднем'}<br>норма ${dec(n.waterMl / 1000, 2)} л</em><b><i data-count="${liters}" data-dec="2">${dec(liters, 2)}</i>л</b><span>/День</span></div>
         </article>
       </section>
 
@@ -312,8 +344,8 @@
             ${BUB('moon', 'drop', 'apple', 'stack--s')}
             <span class="tag">${icon(tip.icon)}${esc(tip.tag)}</span>
           </div>
-          <h3>${esc(tip.title)}</h3>
-          <p>${esc(tip.text)}</p>
+          <h3 class="${tipSwap ? 'swap' : ''}">${esc(tip.title)}</h3>
+          <p class="${tipSwap ? 'swap' : ''}">${esc(tip.text)}</p>
           <div class="sleep-foot">
             <div class="count"><b>${tipIndex + 1}</b>/${D.TIPS.length}</div>
             <div class="pager">
@@ -329,17 +361,17 @@
         v.onclick = e => {
           const t = e.target;
           const cup = t.closest('[data-cup]');
-          if (cup) { const i = +cup.getAttribute('data-cup'); JF.setWater(i < JF.peek().water ? i : i + 1); return refresh(); }
+          if (cup) { const i = +cup.getAttribute('data-cup'); setWater(i < JF.peek().water ? i : i + 1); return refresh(); }
           const rg = t.closest('[data-range]');
           if (rg) { waterRange = rg.getAttribute('data-range'); return refresh(); }
           const tp = t.closest('[data-tip]');
-          if (tp) { tipIndex = (tipIndex + +tp.getAttribute('data-tip') + D.TIPS.length) % D.TIPS.length; return refresh(); }
+          if (tp) { tipIndex = (tipIndex + +tp.getAttribute('data-tip') + D.TIPS.length) % D.TIPS.length; tipSwap = true; return refresh(); }
           const a = t.closest('[data-act]');
           if (a) {
             const act = a.getAttribute('data-act');
             if (act === 'play') return next == null ? go('#/workouts') : go(`#/workout/${pid}/${next}`);
             if (act === 'program') return go('#/program/' + pid);
-            if (act === 'water-add') { JF.addWater(1); toast(`+250 мл · ${JF.peek().water} из ${n.glasses} стаканов`); return refresh(); }
+            if (act === 'water-add') { setWater(JF.peek().water + 1); toast(`+250 мл · ${JF.peek().water} из ${n.glasses} стаканов`); return refresh(); }
             if (act === 'water-info') return toast(`Норма на сегодня выполнена: ${dec(JF.peek().water * 0.25, 2)} л`);
           }
           const card = t.closest('[data-go-card]');
@@ -482,7 +514,7 @@
 
   // ---------- Тренировки ----------
   SCREENS.workouts = function () {
-    const pid = JF.program(), prog = D.PROGRAMS.find(x => x.id === pid);
+    const pid = JF.program(), prog = D.find(pid);
     const next = JF.nextIndex(pid), done = JF.doneList(pid).length, w = JF.currentWeight();
     const nw = next == null ? null : D.workout(pid, next), np = nw && D.plan(nw, w);
     const total = Object.values(JF.state.days).reduce((s, d) => s + d.workouts.length, 0);
@@ -510,13 +542,18 @@
           <div class="note">${icon('info')}<div>Для результата достаточно 3 тренировок в неделю. Между силовыми тренировками давай телу день отдыха.</div></div>
         </div>
       </div>
+      <div class="ai-plan">
+        <span class="chip">${icon('spark')}</span>
+        <div class="li-main"><b>Программа от ИИ-тренера</b><small>Под твою цель, уровень, время и пожелания — например, «болит колено» или «только пресс».</small></div>
+        <button class="btn btn-dark" data-ai-plan>${icon('spark')}Создать</button>
+      </div>
       <div class="sec"><h2>Программы</h2></div>
       <div class="grid grid-2">
-        ${D.PROGRAMS.map(p => {
+        ${D.all().map(p => {
           const dn = JF.doneList(p.id).length, pl = D.plan(D.workout(p.id, 0), w);
           return `<button class="card pad prog-card tap ${p.id === pid ? 'is-current' : ''}" data-go-btn="#/program/${p.id}">
-            <div class="c-head"><span class="prog-dot" style="background:${p.color}">${icon(p.id === 'mobility' ? 'leaf' : p.id === 'burn' ? 'flame' : 'dumbbell')}</span>
-              ${p.id === pid ? '<span class="pill lime">Текущая</span>' : ''}</div>
+            <div class="c-head"><span class="prog-dot" style="background:${p.color}">${icon(p.ai ? 'spark' : p.id === 'mobility' ? 'leaf' : p.id === 'burn' ? 'flame' : 'dumbbell')}</span>
+              <span class="pills">${p.ai ? '<span class="pill">ИИ</span>' : ''}${p.id === pid ? '<span class="pill lime">Текущая</span>' : ''}</span></div>
             <div><div class="h3">${esc(p.title)}</div><div class="muted" style="font-size:.875rem;margin-top:.25rem">${esc(p.sub)}</div></div>
             <div class="pills"><span class="pill">${esc(p.level)}</span><span class="pill">${icon('calendar')}${p.count} трен.</span><span class="pill">${icon('timer')}~${pl.min} мин</span></div>
             <div class="bar"><i style="width:${Math.round(dn / p.count * 100)}%"></i></div>
@@ -525,9 +562,9 @@
       </div>
       <div class="sec"><h2>Упражнения</h2></div>
       <div class="card pad"><div class="list">
-        ${exIds.map(id => { const ex = D.EXERCISES[id]; return `<button class="li" data-ex="${id}"><span class="chip">${icon(ex.icon)}</span><span class="li-main"><b>${esc(ex.name)}</b><small>${esc(ex.muscles)}</small></span>${icon('chevR').replace('<svg', '<svg style="width:1rem;height:1rem;color:var(--muted-2)"')}</button>`; }).join('')}
+        ${exIds.map(id => { const ex = D.EXERCISES[id]; return `<button class="li" data-ex="${id}"><span class="ex-thumb">${JF_ANIM.still(id)}</span><span class="li-main"><b>${esc(ex.name)}</b><small>${esc(ex.muscles)}</small></span>${icon('chevR').replace('<svg', '<svg style="width:1rem;height:1rem;color:var(--muted-2)"')}</button>`; }).join('')}
       </div></div>`,
-      mount(v) { v.onclick = commonClicks; }
+      mount(v) { v.onclick = e => { if (e.target.closest('[data-ai-plan]')) return planSheet(); commonClicks(e); }; }
     };
   };
   function commonClicks(e) {
@@ -548,13 +585,16 @@
   function exerciseSheet(id, amount) {
     const ex = D.EXERCISES[id]; if (!ex) return;
     openSheet({ title: ex.name, html: `
+      <div class="ex-anim" data-anim></div>
       <div class="pills" style="margin-bottom:1rem"><span class="pill">${icon(ex.icon)}${esc(ex.muscles)}</span>${amount ? `<span class="pill lime">${amountText(id, amount)}</span>` : ''}</div>
       <p class="lead" style="color:var(--ink-2)">${esc(ex.how)}</p>
-      <button class="btn btn-dark btn-block" data-close style="margin-top:1.25rem">Понятно</button>` });
+      <button class="btn btn-dark btn-block" data-close style="margin-top:1.25rem">Понятно</button>`,
+      onMount(sheet) { JF_ANIM.play($('[data-anim]', sheet), id); } });
   }
 
+
   SCREENS.program = function (pid) {
-    const p = D.PROGRAMS.find(x => x.id === pid);
+    const p = D.find(pid);
     if (!p) return { redirect: '#/workouts' };
     const done = JF.doneList(pid), next = JF.nextIndex(pid), w = JF.currentWeight(), isCur = JF.program() === pid;
     return {
@@ -567,6 +607,7 @@
           <div class="bar"><i style="width:${Math.round(done.length / p.count * 100)}%"></i></div>
           <div class="muted" style="font-size:.875rem">Пройдено ${done.length} из ${p.count}</div>
           ${isCur ? '' : `<button class="btn btn-dark btn-block" data-set-prog="${pid}">Сделать текущей программой</button>`}
+          ${p.ai ? `<button class="btn btn-ghost btn-block" data-del-prog style="color:var(--danger)">${icon('trash')}Удалить эту программу</button>` : ''}
           ${next == null ? `<button class="btn btn-ghost btn-block" data-reset="${pid}">${icon('refresh')}Пройти заново</button>` : ''}
         </div>
         <div class="card pad"><div class="list">
@@ -583,6 +624,11 @@
         v.onclick = e => {
           const sp = e.target.closest('[data-set-prog]');
           if (sp) { JF.setProgram(pid); toast('Программа выбрана'); return refresh(); }
+          if (e.target.closest('[data-del-prog]')) {
+            UI.confirm({ title: 'Удалить программу?', text: `«${p.title}» и отметки о её тренировках удалятся. История в «Прогрессе» останется.`, ok: 'Удалить', danger: true })
+              .then(ok => { if (ok) { JF.removeCustomProgram(pid); toast('Программа удалена'); location.replace('#/workouts'); } });
+            return;
+          }
           commonClicks(e);
         };
       }
@@ -590,7 +636,7 @@
   };
 
   SCREENS.workout = function (pid, idx) {
-    const p = D.PROGRAMS.find(x => x.id === pid);
+    const p = D.find(pid);
     idx = +idx;
     if (!p || !(idx >= 0 && idx < p.count)) return { redirect: '#/workouts' };
     const wk = D.workout(pid, idx), pl = D.plan(wk, JF.currentWeight()), isDone = JF.doneList(pid).includes(idx);
@@ -605,7 +651,7 @@
           <button class="btn btn-lime btn-block" data-go-btn="#/play/${pid}/${idx}">${icon('play')}Начать тренировку</button>
         </div>
         <div class="card pad"><div class="h3" style="margin-bottom:.25rem">Упражнения</div><div class="list">
-          ${wk.items.map((it, k) => { const ex = D.EXERCISES[it.id]; return `<button class="ex-row" data-ex="${it.id}" data-amount="${it.amount}"><span class="ex-num">${k + 1}</span>
+          ${wk.items.map((it, k) => { const ex = D.EXERCISES[it.id]; return `<button class="ex-row" data-ex="${it.id}" data-amount="${it.amount}"><span class="ex-thumb">${JF_ANIM.still(it.id)}<i>${k + 1}</i></span>
             <span class="li-main"><b>${esc(ex.name)}</b><small>${esc(ex.muscles)}</small></span><span class="li-end">${amountText(it.id, it.amount).replace(' на каждую сторону', ' ×2')}</span></button>`; }).join('')}
         </div>
         <p class="disclaimer" style="text-align:left;margin-top:1rem">Нажми на упражнение, чтобы посмотреть технику. При боли или головокружении остановись.</p></div>
@@ -616,7 +662,7 @@
 
   // ---------- Плеер тренировки ----------
   SCREENS.play = function (pid, idx) {
-    const p = D.PROGRAMS.find(x => x.id === pid);
+    const p = D.find(pid);
     idx = +idx;
     if (!p || !(idx >= 0 && idx < p.count)) return { redirect: '#/workouts' };
     const wk = D.workout(pid, idx), weight = JF.currentWeight(), plan = D.plan(wk, weight);
@@ -667,7 +713,7 @@
       const min = Math.max(1, Math.round((Date.now() - st.started) / 60000));
       const kcal = Math.round(st.kcal + weight * 0.04 * 2);
       JF.logWorkout({ pid, idx, title: wk.title, min, kcal, ex: st.doneEx });
-      UI.beep(990, 500);
+      UI.beep(990, 500); UI.confetti();
       view.innerHTML = `<div class="player"><div class="pl-card finish">
         <div class="pl-ic">${icon('check')}</div>
         <div class="pl-name">Тренировка завершена!</div>
@@ -692,7 +738,7 @@
       let card;
       if (st.i < 0) {
         const f = D.EXERCISES[wk.items[0].id];
-        card = `<div class="pl-card"><div class="pl-ic">${icon('dumbbell')}</div><div class="pl-name">Готов?</div>
+        card = `<div class="pl-card"><div class="pl-anim" data-anim="${wk.items[0].id}"></div><div class="pl-name">Готов?</div>
           <p class="pl-how">Первое упражнение — «${esc(f.name)}». Сделай лёгкую разминку: покрути плечами, тазом, пройдись на месте 1–2 минуты.</p>
           <button class="btn btn-lime" data-start style="min-width:14rem">${icon('play')}Старт</button></div>`;
       } else if (s.kind === 'rest') {
@@ -706,7 +752,7 @@
           <button class="btn btn-white" data-skip>${icon('skip')}Пропустить</button></div></div>`;
       } else {
         const ex = D.EXERCISES[s.it.id], timed = ex.type === 'time';
-        card = `<div class="pl-card"><div class="pl-ic">${icon(ex.icon)}</div>
+        card = `<div class="pl-card"><div class="pl-anim" data-anim="${s.it.id}"></div>
           <div class="pl-name">${esc(ex.name)}</div>
           ${timed ? `<div class="ring"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" fill="none" stroke="#eef6fc" stroke-width="8"/>
               <circle id="pl-ring" cx="60" cy="60" r="54" fill="none" stroke="#94a103" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(2 * Math.PI * 54).toFixed(1)}" stroke-dashoffset="0"/></svg>
@@ -719,6 +765,7 @@
           </div></div>`;
       }
       view.innerHTML = `<div class="player">${head}${card}</div>`;
+      const an = $('[data-anim]', view); if (an) JF_ANIM.play(an, an.getAttribute('data-anim'));
       tick();
     }
     async function quit() {
@@ -753,7 +800,7 @@
 
   // ---------- Питание ----------
   SCREENS.food = function () {
-    const day = JF.peek();
+    const day = JF.peek(), yesterday = JF.peek(JF.dayKey(JF.addDays(new Date(), -1)));
     return {
       live: true,
       top: { title: 'Питание', sub: 'Сфотографируй еду — ИИ посчитает калории и БЖУ.' },
@@ -774,11 +821,18 @@
         ${MEALS.map(([key, name]) => {
           const items = day.meals.filter(m => m.meal === key);
           const sum = items.reduce((s, m) => s + m.kcal, 0);
+          const yest = items.length ? [] : yesterday.meals.filter(m => m.meal === key);
+          const ySum = yest.reduce((s, m) => s + m.kcal, 0);
           return `<div class="card pad"><div class="meal-head"><b>${name}</b><span>${num(sum)} ккал</span></div>
             ${items.length ? `<div class="list">${items.map(m => `<div class="li"><span class="li-main"><b>${esc(m.name)}</b><small>${m.grams ? m.grams + ' г · ' : ''}Б ${dec(m.p)} · Ж ${dec(m.f)} · У ${dec(m.c)}</small></span>
-              <span class="li-end">${num(m.kcal)} ккал</span><button class="del" data-del="${m.id}" aria-label="Удалить ${esc(m.name)}">${icon('trash')}</button></div>`).join('')}</div>`
+              <span class="li-end">${num(m.kcal)} ккал</span>
+              <button class="del fav ${JF.isFavorite(m.name) ? 'on' : ''}" data-fav="${m.id}" aria-label="${JF.isFavorite(m.name) ? 'Убрать из избранного' : 'В избранное'}">${icon('star')}</button>
+              <button class="del" data-del="${m.id}" aria-label="Удалить ${esc(m.name)}">${icon('trash')}</button></div>`).join('')}</div>`
               : `<p class="muted" style="font-size:.875rem;margin-top:.5rem">Пока пусто</p>`}
-            <button class="btn btn-ghost btn-sm" data-manual="${key}" style="margin-top:.875rem;align-self:flex-start">${icon('plus')}Добавить</button>
+            <div class="row-btns" style="margin-top:.875rem">
+              <button class="btn btn-ghost btn-sm" data-manual="${key}">${icon('plus')}Добавить</button>
+              ${yest.length ? `<button class="btn btn-ghost btn-sm" data-repeat="${key}" title="${esc(yest.map(m => m.name).join(', '))}">${icon('refresh')}Как вчера · ${num(ySum)} ккал</button>` : ''}
+            </div>
           </div>`;
         }).join('')}
       </div>`,
@@ -786,6 +840,20 @@
         v.onclick = e => {
           const del = e.target.closest('[data-del]');
           if (del) { JF.removeMeal(del.getAttribute('data-del')); toast('Удалено'); return refresh(); }
+          const fav = e.target.closest('[data-fav]');
+          if (fav) {
+            const m = JF.peek().meals.find(x => x.id === fav.getAttribute('data-fav'));
+            if (m) toast(JF.toggleFavorite(m) ? `«${m.name}» — в избранном ⭐` : 'Убрано из избранного');
+            return refresh();
+          }
+          const rp = e.target.closest('[data-repeat]');
+          if (rp) {
+            const key = rp.getAttribute('data-repeat');
+            const list = JF.peek(JF.dayKey(JF.addDays(new Date(), -1))).meals.filter(m => m.meal === key);
+            list.forEach(m => JF.addMeal({ name: m.name, grams: m.grams, meal: key, kcal: m.kcal, p: m.p, f: m.f, c: m.c }));
+            toast(`Добавлено как вчера: ${list.length} ${plural(list.length, 'блюдо', 'блюда', 'блюд')}`);
+            return refresh();
+          }
           const man = e.target.closest('[data-manual]');
           if (man) return addFoodSheet(null, man.getAttribute('data-manual') || null);
         };
@@ -908,14 +976,37 @@
   // Добавление еды вручную (поиск по справочнику или своё блюдо)
   function addFoodSheet(food, meal) {
     meal = meal || mealNow();
-    let close, el, sel = food || null, grams = food ? food.portion : 100, custom = false;
+    // sel — продукт на 100 г ({name,kcal,p,f,c,portion}); fixed — блюдо без веса ({name,kcal,p,f,c}), считаем порциями
+    let close, el, sel = food || null, grams = food ? food.portion : 100, custom = false, fixed = null, mult = 1;
+    const favs = JF.state.favorites || [];
+    const recent = JF.recentFoods(8).filter(m => !JF.isFavorite(m.name));
+    const personal = { fav: favs, rec: recent };
+    // запись из дневника/избранного → продукт для степпера
+    function fromEntry(m) {
+      if (m.grams > 0) { const k = 100 / m.grams; return { sel: { name: m.name, kcal: m.kcal * k, p: m.p * k, f: m.f * k, c: m.c * k, portion: m.grams } }; }
+      return { fixed: { name: m.name, kcal: m.kcal, p: m.p, f: m.f, c: m.c } };
+    }
+    const pRow = (m, ref) => `<button class="li" data-pf="${ref}"><span class="li-main"><b>${esc(m.name)}</b><small>${m.grams ? m.grams + ' г · ' : ''}${num(m.kcal)} ккал · Б ${dec(m.p)} · Ж ${dec(m.f)} · У ${dec(m.c)}</small></span>${icon('plus').replace('<svg', '<svg style="width:1.125rem;height:1.125rem;color:var(--muted-2)"')}</button>`;
+    const dbRow = (f, i) => `<button class="li" data-food="${i}"><span class="li-main"><b>${esc(f.name)}</b><small>${f.kcal} ккал · Б ${dec(f.p)} · Ж ${dec(f.f)} · У ${dec(f.c)} на 100 г</small></span>${icon('plus').replace('<svg', '<svg style="width:1.125rem;height:1.125rem;color:var(--muted-2)"')}</button>`;
     const listHtml = q => {
       q = (q || '').trim().toLowerCase();
-      const res = D.FOODS.map((f, i) => [f, i]).filter(([f]) => !q || f.name.toLowerCase().includes(q)).slice(0, q ? 40 : 16);
-      return res.map(([f, i]) => `<button class="li" data-food="${i}"><span class="li-main"><b>${esc(f.name)}</b><small>${f.kcal} ккал · Б ${dec(f.p)} · Ж ${dec(f.f)} · У ${dec(f.c)} на 100 г</small></span>${icon('plus').replace('<svg', '<svg style="width:1.125rem;height:1.125rem;color:var(--muted-2)"')}</button>`).join('')
-        || `<div class="empty-box">Не нашлось. Добавь как своё блюдо 👇</div>`;
+      const hit = n => !q || n.toLowerCase().includes(q);
+      const f = favs.map((m, i) => [m, 'fav:' + i]).filter(([m]) => hit(m.name));
+      const r = recent.map((m, i) => [m, 'rec:' + i]).filter(([m]) => hit(m.name));
+      const db = D.FOODS.map((x, i) => [x, i]).filter(([x]) => hit(x.name)).slice(0, q ? 40 : 14);
+      let html = '';
+      if (f.length) html += `<div class="list-h">${icon('star')}Избранное</div>` + f.map(([m, ref]) => pRow(m, ref)).join('');
+      if (r.length) html += `<div class="list-h">${icon('refresh')}Недавние</div>` + r.map(([m, ref]) => pRow(m, ref)).join('');
+      if (db.length) html += `<div class="list-h">${icon('apple')}${q ? 'Справочник' : 'Популярное'}</div>` + db.map(([x, i]) => dbRow(x, i)).join('');
+      return html || `<div class="empty-box">Не нашлось. Добавь как своё блюдо 👇</div>`;
     };
     const mealSeg = () => `<label class="label">Приём пищи</label><div class="seg" data-meal style="margin-bottom:1.25rem">${MEALS.map(([k, n]) => `<button data-v="${k}" aria-pressed="${meal === k}">${n}</button>`).join('')}</div>`;
+    const favBtn = name => `<button class="btn btn-ghost btn-sm fav-toggle ${JF.isFavorite(name) ? 'on' : ''}" data-fav-toggle>${icon('star')}${JF.isFavorite(name) ? 'В избранном' : 'В избранное'}</button>`;
+    function current() {
+      if (fixed) return { name: fixed.name, grams: 0, kcal: fixed.kcal * mult, p: fixed.p * mult, f: fixed.f * mult, c: fixed.c * mult };
+      const k = grams / 100;
+      return { name: sel.name, grams, kcal: sel.kcal * k, p: sel.p * k, f: sel.f * k, c: sel.c * k };
+    }
     function draw() {
       let html;
       if (custom) {
@@ -928,12 +1019,15 @@
           </div>${mealSeg()}
           <button class="btn btn-dark btn-block" data-add-custom>${icon('check')}Добавить</button>
           <button class="btn btn-ghost btn-block" data-back-list style="margin-top:.625rem">Назад к списку</button>`;
-      } else if (sel) {
-        const k = grams / 100;
-        html = `<div class="h3">${esc(sel.name)}</div><p class="muted" style="font-size:.875rem;margin:.25rem 0 1.25rem">${sel.kcal} ккал на 100 г</p>
-          <div class="stepper" style="margin-bottom:1rem"><button data-step="-10" aria-label="Меньше">${icon('minus')}</button><div class="val">${grams}<small>г</small></div><button data-step="10" aria-label="Больше">${icon('plus')}</button></div>
-          <div class="seg" style="justify-content:center;margin-bottom:1.25rem">${[...new Set([50, 100, 150, 200, 300, sel.portion])].sort((a, b) => a - b).map(g => `<button data-gram="${g}" aria-pressed="${g === grams}">${g} г</button>`).join('')}</div>
-          <div class="norms"><div class="big"><b>${num(sel.kcal * k)} ккал</b><span>Б ${dec(sel.p * k)} г · Ж ${dec(sel.f * k)} г · У ${dec(sel.c * k)} г</span></div></div>
+      } else if (sel || fixed) {
+        const v = current();
+        html = `<div class="c-head" style="margin-bottom:.25rem"><div class="h3">${esc(v.name)}</div>${favBtn(v.name)}</div>
+          <p class="muted" style="font-size:.875rem;margin:0 0 1.25rem">${fixed ? 'Порция как в прошлый раз' : `${Math.round(sel.kcal)} ккал на 100 г`}</p>
+          ${fixed
+            ? `<div class="stepper" style="margin-bottom:1.25rem"><button data-mult="-0.5" aria-label="Меньше">${icon('minus')}</button><div class="val">×${dec(mult)}<small>порц.</small></div><button data-mult="0.5" aria-label="Больше">${icon('plus')}</button></div>`
+            : `<div class="stepper" style="margin-bottom:1rem"><button data-step="-10" aria-label="Меньше">${icon('minus')}</button><div class="val">${grams}<small>г</small></div><button data-step="10" aria-label="Больше">${icon('plus')}</button></div>
+               <div class="seg" style="justify-content:center;margin-bottom:1.25rem">${[...new Set([50, 100, 150, 200, 300, sel.portion])].sort((a, b) => a - b).map(g => `<button data-gram="${g}" aria-pressed="${g === grams}">${g} г</button>`).join('')}</div>`}
+          <div class="norms"><div class="big"><b>${num(v.kcal)} ккал</b><span>Б ${dec(v.p)} г · Ж ${dec(v.f)} г · У ${dec(v.c)} г</span></div></div>
           ${mealSeg()}
           <button class="btn btn-dark btn-block" data-add>${icon('check')}Добавить в дневник</button>
           ${food ? '' : `<button class="btn btn-ghost btn-block" data-back-list style="margin-top:.625rem">Назад к списку</button>`}`;
@@ -952,17 +1046,21 @@
         sheet.addEventListener('input', e => { if (e.target.id === 'food-q') sheet.querySelector('#food-list').innerHTML = listHtml(e.target.value); });
         sheet.addEventListener('click', e => {
           const t = e.target;
-          const f = t.closest('[data-food]'); if (f) { sel = D.FOODS[+f.getAttribute('data-food')]; grams = sel.portion; return draw(); }
+          const f = t.closest('[data-food]'); if (f) { sel = D.FOODS[+f.getAttribute('data-food')]; fixed = null; grams = sel.portion; return draw(); }
+          const pf = t.closest('[data-pf]');
+          if (pf) { const [kind, i] = pf.getAttribute('data-pf').split(':'); const r = fromEntry(personal[kind][+i]); sel = r.sel || null; fixed = r.fixed || null; mult = 1; grams = sel ? sel.portion : 100; return draw(); }
           const st = t.closest('[data-step]'); if (st) { grams = Math.max(10, Math.min(2000, grams + +st.getAttribute('data-step'))); return draw(); }
+          const mu = t.closest('[data-mult]'); if (mu) { mult = Math.max(0.5, Math.min(5, mult + +mu.getAttribute('data-mult'))); return draw(); }
           const gr = t.closest('[data-gram]'); if (gr) { grams = +gr.getAttribute('data-gram'); return draw(); }
           const m = t.closest('[data-meal] [data-v]');
           if (m) { meal = m.getAttribute('data-v'); $$('[data-meal] [data-v]', sheet).forEach(b => b.setAttribute('aria-pressed', b === m)); return; }
-          if (t.closest('[data-back-list]')) { sel = null; custom = false; return draw(); }
+          if (t.closest('[data-fav-toggle]')) { const v = current(); toast(JF.toggleFavorite(v) ? `«${v.name}» — в избранном ⭐` : 'Убрано из избранного'); return draw(); }
+          if (t.closest('[data-back-list]')) { sel = null; fixed = null; custom = false; return draw(); }
           if (t.closest('[data-custom]')) { custom = true; return draw(); }
           if (t.closest('[data-add]')) {
-            const k = grams / 100;
-            JF.addMeal({ name: sel.name, grams, meal, kcal: sel.kcal * k, p: sel.p * k, f: sel.f * k, c: sel.c * k });
-            toast(`${sel.name}: +${num(sel.kcal * k)} ккал`); c(); afterAdd();
+            const v = current();
+            JF.addMeal(Object.assign(v, { meal }));
+            toast(`${v.name}: +${num(v.kcal)} ккал`); c(); afterAdd();
           }
           if (t.closest('[data-add-custom]')) {
             const v = id => +((sheet.querySelector('#' + id).value || '0').replace(',', '.')) || 0;
@@ -976,6 +1074,60 @@
       }
     });
     function afterAdd() { const n = parse().name; if (n === 'scan') { pendingScan = null; location.replace('#/food'); } else if (n === 'food' || n === 'home') refresh(); else go('#/food'); }
+  }
+
+  // ---------- Программа от ИИ-тренера ----------
+  function planSheet() {
+    const p = JF.profile;
+    const o = { days: p.perWeek || 3, minutes: 25, level: 'beginner', focus: p.goal === 'lose' ? 'Похудение' : p.goal === 'gain' ? 'Сила и мышцы' : 'Всё тело', wish: '' };
+    const FOCUS = ['Всё тело', 'Похудение', 'Сила и мышцы', 'Ноги и ягодицы', 'Пресс и кор', 'Руки и спина', 'Здоровая спина', 'Гибкость'];
+    const seg = (key, items) => `<div class="seg" data-o="${key}" style="margin-bottom:1.125rem">${items.map(([v, t]) => `<button data-v="${v}" aria-pressed="${String(o[key]) === String(v)}">${t}</button>`).join('')}</div>`;
+    openSheet({
+      title: 'Программа от ИИ-тренера', html: '',
+      onMount(sheet, close) {
+        let busy = false;
+        const draw = () => {
+          sheet.querySelector('.sheet-body').innerHTML = busy
+            ? `<div style="text-align:center;padding:2rem 0"><div class="spinner"></div><div class="h3" style="margin-top:1rem">ИИ составляет программу…</div><p class="muted" style="font-size:.875rem;margin-top:.375rem">Обычно 10–20 секунд</p></div>`
+            : `<label class="label">Тренировок в неделю</label>${seg('days', [[2, '2'], [3, '3'], [4, '4'], [5, '5']])}
+              <label class="label">Время на одну тренировку</label>${seg('minutes', [[15, '15 мин'], [25, '25 мин'], [35, '35 мин'], [45, '45 мин']])}
+              <label class="label">Уровень</label>${seg('level', [['beginner', 'Новичок'], ['middle', 'Средний'], ['advanced', 'Продвинутый']])}
+              <label class="label">Акцент</label>${seg('focus', FOCUS.map(f => [f, f]))}
+              <div class="field"><label class="label" for="pl-wish">Пожелания (необязательно)</label>
+                <input class="input" id="pl-wish" maxlength="200" value="${esc(o.wish)}" placeholder="Например: болит колено, без прыжков"></div>
+              <button class="btn btn-dark btn-block" data-make>${icon('spark')}Составить программу</button>
+              <p class="disclaimer">Программа собирается из упражнений приложения — у каждого есть анимация и техника.</p>`;
+        };
+        draw();
+        sheet.addEventListener('click', async e => {
+          const b = e.target.closest('[data-o] [data-v]');
+          if (b) { const k = b.closest('[data-o]').getAttribute('data-o'); const w = $('#pl-wish', sheet); if (w) o.wish = w.value; o[k] = /^\d+$/.test(b.getAttribute('data-v')) ? +b.getAttribute('data-v') : b.getAttribute('data-v'); return draw(); }
+          if (!e.target.closest('[data-make]') || busy) return;
+          o.wish = ($('#pl-wish', sheet) || {}).value || '';
+          busy = true; draw();
+          try {
+            const exercises = Object.keys(D.EXERCISES).map(id => ({ id, name: D.EXERCISES[id].name, type: D.EXERCISES[id].type, muscles: D.EXERCISES[id].muscles }));
+            const prof = { sex: p.sex === 'f' ? 'женский' : 'мужской', age: p.age, weight: JF.currentWeight(), height: p.height, goal: GOALS[p.goal] };
+            const data = await api('/api/plan', Object.assign({}, o, { exercises, profile: prof }), 55000);
+            const pr = data.program;
+            const id = 'ai-' + Date.now().toString(36);
+            const LV = { beginner: 'Новичок', middle: 'Средний', advanced: 'Продвинутый' };
+            JF.addCustomProgram({
+              id, ai: true, title: pr.title, sub: `От ИИ-тренера · ${o.focus.toLowerCase()}`, level: LV[o.level], color: '#94a103',
+              about: pr.about || `${o.days} тренировки в неделю по ~${o.minutes} минут.`, count: Math.min(16, o.days * 4),
+              rest: o.level === 'advanced' ? 15 : o.level === 'middle' ? 20 : 25,
+              templates: pr.workouts.map(w => ({ title: w.title, items: w.items })), createdAt: Date.now()
+            });
+            JF.setProgram(id);
+            close(); UI.confetti(); toast('Программа готова и выбрана текущей');
+            go('#/program/' + id);
+          } catch (err) {
+            busy = false; draw();
+            toast(err.message === 'offline' ? 'Нужен интернет, чтобы ИИ составил программу' : 'ИИ сейчас не ответил. Попробуй ещё раз через минуту', 4000);
+          }
+        });
+      }
+    });
   }
 
   // ---------- ИИ-тренер ----------
@@ -992,7 +1144,7 @@
             <p class="lead" style="max-width:26rem;margin:.5rem auto 0">Я знаю твою цель, нормы и программу. Могу составить план тренировок или питания, подсказать технику и ответить на вопросы.</p></div>`}
           ${coachBusy ? '<div class="msg ai typing"><span class="typing-dots"><i></i><i></i><i></i></span></div>' : ''}
         </div>
-        <div class="chips">${CHIPS.map(c => `<button data-chip>${esc(c)}</button>`).join('')}${msgs.length ? `<button data-clear>${'Очистить чат'}</button>` : ''}</div>
+        <div class="chips"><button data-plan-chip class="chip-ai">${icon('spark')}Создать программу тренировок</button>${CHIPS.map(c => `<button data-chip>${esc(c)}</button>`).join('')}${msgs.length ? `<button data-clear>${'Очистить чат'}</button>` : ''}</div>
         <form class="composer" id="composer"><textarea id="msg" rows="1" maxlength="1000" placeholder="Напиши вопрос…" aria-label="Сообщение"></textarea>
           <button class="send" type="submit" aria-label="Отправить" ${coachBusy ? 'disabled' : ''}>${icon('send')}</button></form>
         <p class="disclaimer">ИИ может ошибаться и не заменяет врача.</p>
@@ -1004,6 +1156,7 @@
         ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 620) { e.preventDefault(); send(ta.value); } });
         $('#composer', v).addEventListener('submit', e => { e.preventDefault(); send(ta.value); });
         v.onclick = e => {
+          if (e.target.closest('[data-plan-chip]')) return planSheet();
           const c = e.target.closest('[data-chip]'); if (c) return send(c.textContent);
           if (e.target.closest('[data-clear]')) UI.confirm({ title: 'Очистить чат?', text: 'Вся переписка с ИИ-тренером удалится.', ok: 'Очистить' }).then(ok => { if (ok) { JF.clearChat(); refresh(); } });
         };
@@ -1011,12 +1164,12 @@
     };
   };
   function coachContext() {
-    const p = JF.profile, n = JF.norms(), t = JF.totals(), d = JF.peek(), pid = JF.program(), prog = D.PROGRAMS.find(x => x.id === pid);
+    const p = JF.profile, n = JF.norms(), t = JF.totals(), d = JF.peek(), pid = JF.program(), prog = D.find(pid);
     return {
       name: p.name, sex: p.sex === 'f' ? 'женский' : 'мужской', age: p.age, height: p.height, weight: JF.currentWeight(), startWeight: JF.weights()[0] ? JF.weights()[0].kg : p.weight,
       goal: GOALS[p.goal], goalWeight: p.goalWeight, activity: (ACTIVITY.find(a => a[0] === p.activity) || [0, ''])[1],
       norms: { kcal: n.kcal, protein: n.protein, fat: n.fat, carbs: n.carbs, waterL: +(n.waterMl / 1000).toFixed(2) },
-      today: { kcal: t.kcal, protein: t.p, fat: t.f, carbs: t.c, waterGlasses: d.water, workouts: d.workouts.map(w => w.title), meals: d.meals.map(m => m.name).slice(0, 15) },
+      today: { kcal: t.kcal, protein: t.p, fat: t.f, carbs: t.c, waterGlasses: d.water, steps: d.steps || 0, workouts: d.workouts.map(w => w.title), meals: d.meals.map(m => m.name).slice(0, 15) },
       program: `${prog.title}: пройдено ${JF.doneList(pid).length} из ${prog.count}`, workoutsThisWeek: JF.weekWorkouts()
     };
   }
@@ -1067,6 +1220,12 @@
     const kcals = week.map(x => JF.totals(x.day).kcal), kmax = Math.max(n.kcal * 1.2, ...kcals);
     const waters = week.map(x => x.day.water), wmax = Math.max(n.glasses, ...waters);
     const monthStart = JF.addDays(new Date(), -29);
+    // шаги
+    const H = window.JF_health, stepsGoal = 8000, today = JF.peek(), stepsToday = today.steps || 0;
+    const stepsWeek = week.map(x => x.day.steps || 0), smax = Math.max(stepsGoal, ...stepsWeek);
+    const stepsKcal = Math.round(stepsToday * 0.04 * cw / 70);
+    // отчёт недели
+    const wk = JF.dayKey(JF.weekStart()), rep = (JF.state.reports || {})[wk];
     return {
       live: true,
       top: { title: 'Прогресс', sub: 'Вес, калории, вода и тренировки.' },
@@ -1096,9 +1255,30 @@
       </div>
       <div class="grid grid-2">
         <div class="card pad"><div class="c-head"><div class="c-title"><span class="chip">${icon('flame')}</span>Калории за 7 дней</div><span class="muted" style="font-size:.875rem">норма ${num(n.kcal)}</span></div>
-          <div class="week-bars">${week.map((x, i) => `<div><i class="${kcals[i] > n.kcal * 1.05 ? 'over' : kcals[i] ? 'on' : ''}" style="height:${Math.max(3, kcals[i] / kmax * 100)}%" title="${num(kcals[i])} ккал"></i><span>${WD[x.d.getDay()]}</span></div>`).join('')}</div></div>
+          <div class="week-bars">${week.map((x, i) => `<div><i class="${kcals[i] > n.kcal * 1.05 ? 'over' : kcals[i] ? 'on' : ''}" style="--i:${i};height:${Math.max(3, kcals[i] / kmax * 100)}%" title="${num(kcals[i])} ккал"></i><span>${WD[x.d.getDay()]}</span></div>`).join('')}</div></div>
         <div class="card pad"><div class="c-head"><div class="c-title"><span class="chip">${icon('drop')}</span>Вода за 7 дней</div><span class="muted" style="font-size:.875rem">норма ${n.glasses} стак.</span></div>
-          <div class="week-bars">${week.map((x, i) => `<div><i class="${waters[i] >= n.glasses ? 'on' : ''}" style="height:${Math.max(3, waters[i] / wmax * 100)}%;${waters[i] && waters[i] < n.glasses ? 'background:#5db0e9' : ''}" title="${waters[i]} стак."></i><span>${WD[x.d.getDay()]}</span></div>`).join('')}</div></div>
+          <div class="week-bars">${week.map((x, i) => `<div><i class="${waters[i] >= n.glasses ? 'on' : ''}" style="--i:${i};height:${Math.max(3, waters[i] / wmax * 100)}%;${waters[i] && waters[i] < n.glasses ? 'background:#5db0e9' : ''}" title="${waters[i]} стак."></i><span>${WD[x.d.getDay()]}</span></div>`).join('')}</div></div>
+      </div>
+      <div class="grid grid-2">
+        <div class="card pad" style="gap:1rem">
+          <div class="c-head"><div class="c-title"><span class="chip">${icon('steps')}</span>Шаги</div>
+            ${H && H.supported ? (H.connected ? `<button class="btn btn-ghost btn-sm" data-steps-sync>${icon('refresh')}Обновить</button>` : '') : `<button class="btn btn-ghost btn-sm" data-steps-manual>${icon('edit')}Ввести</button>`}</div>
+          <div class="grid grid-3 keep">
+            <div class="kpi"><b><em data-count="${stepsToday}">${num(stepsToday)}</em></b><span>сегодня</span></div>
+            <div class="kpi"><b>${Math.min(100, Math.round(stepsToday / stepsGoal * 100))}<small>%</small></b><span>от цели ${num(stepsGoal)}</span></div>
+            <div class="kpi"><b>~${num(stepsKcal)}</b><span>ккал сожжено</span></div>
+          </div>
+          <div class="week-bars">${week.map((x, i) => `<div><i class="${stepsWeek[i] >= stepsGoal ? 'on' : ''}" style="--i:${i};height:${Math.max(3, stepsWeek[i] / smax * 100)}%;${stepsWeek[i] && stepsWeek[i] < stepsGoal ? 'background:#5db0e9' : ''}" title="${num(stepsWeek[i])} шагов"></i><span>${WD[x.d.getDay()]}</span></div>`).join('')}</div>
+          ${H && H.supported && !H.connected ? `<div class="note">${icon('steps')}<div>Подключи <b>Health Connect</b> — шаги будут подтягиваться из телефона, Samsung Health, Google Fit или часов. JOL Fitness только читает шаги.
+            <div style="margin-top:.625rem"><button class="btn btn-dark btn-sm" data-steps-connect>Подключить</button></div></div></div>` : ''}
+        </div>
+        <div class="card pad report" style="gap:1rem">
+          <div class="c-head"><div class="c-title"><span class="chip">${icon('spark')}</span>Отчёт недели</div>
+            ${rep ? `<span class="muted" style="font-size:.8125rem">${UI.dateShort(new Date(rep.at))}</span>` : ''}</div>
+          ${rep ? `<div class="report-text">${esc(rep.text)}</div><button class="btn btn-ghost btn-sm" data-report style="align-self:flex-start">${icon('refresh')}Обновить отчёт</button>`
+            : `<p class="lead">ИИ-тренер разберёт твою неделю: калории, белок, воду, тренировки, шаги и вес — и даст 2–3 конкретных совета.</p>
+               <button class="btn btn-dark" data-report style="align-self:flex-start">${icon('spark')}Получить отчёт</button>`}
+        </div>
       </div>
       <div class="sec"><h2>История веса</h2></div>
       <div class="card pad"><div class="list">
@@ -1109,12 +1289,61 @@
       mount(v) {
         v.onclick = e => {
           if (e.target.closest('[data-add-weight]')) return weightSheet();
+          if (e.target.closest('[data-steps-manual]')) return stepsSheet();
+          if (e.target.closest('[data-steps-sync]')) { JF_health.sync(14).then(() => { toast('Шаги обновлены'); refresh(); }); return; }
+          if (e.target.closest('[data-steps-connect]')) {
+            JF_health.connect().then(r => {
+              if (r.ok) { toast('Health Connect подключён'); refresh(); }
+              else if (r.reason === 'denied') toast('Разрешение не выдано. Можно включить в настройках Health Connect', 4000);
+              else toast('Health Connect недоступен на этом телефоне. На Android 13 и ниже установи его из Play Маркета', 5000);
+            });
+            return;
+          }
+          const rb = e.target.closest('[data-report]');
+          if (rb) { weeklyReport(rb); return; }
           const d = e.target.closest('[data-del-w]');
           if (d) UI.confirm({ title: 'Удалить запись веса?', ok: 'Удалить' }).then(ok => { if (ok) { JF.removeWeight(d.getAttribute('data-del-w')); refresh(); } });
         };
       }
     };
   };
+  function stepsSheet() {
+    let n = JF.peek().steps || 0;
+    openSheet({
+      title: 'Шаги за сегодня', html: `<p class="muted" style="margin-bottom:1rem;font-size:.9375rem">Посмотри количество шагов в шагомере или часах и впиши сюда.</p>
+        <input class="input time-in" id="st-n" type="number" inputmode="numeric" value="${n || ''}" placeholder="0" style="margin-bottom:1.25rem">
+        <button class="btn btn-dark btn-block" data-save>${icon('check')}Сохранить</button>`,
+      onMount(sheet, close) {
+        sheet.addEventListener('click', e => {
+          if (!e.target.closest('[data-save]')) return;
+          const v = +$('#st-n', sheet).value;
+          if (!(v >= 0 && v < 100000)) return toast('Проверь число шагов');
+          JF.setSteps(JF.dayKey(), v); close(); toast('Шаги сохранены'); refresh();
+        });
+      }
+    });
+  }
+  async function weeklyReport(btn) {
+    const p = JF.profile, n = JF.norms();
+    const days = Array.from({ length: 7 }, (_, i) => { const d = JF.addDays(new Date(), i - 6), k = JF.dayKey(d), x = JF.peek(k), t = JF.totals(x);
+      return { date: k, kcal: t.kcal, protein: t.p, fat: t.f, carbs: t.c, waterGlasses: x.water, workouts: x.workouts.length, steps: x.steps || 0, logged: !!(x.meals.length || x.water || x.workouts.length) }; });
+    const ws = JF.weights(), weekAgo = JF.dayKey(JF.addDays(new Date(), -7));
+    const before = ws.filter(w => w.d <= weekAgo).pop() || ws[0];
+    const stats = {
+      name: p.name, goal: GOALS[p.goal], goalWeight: p.goalWeight, norms: { kcal: n.kcal, protein: n.protein, fat: n.fat, carbs: n.carbs, waterGlasses: n.glasses, stepsGoal: 8000 },
+      plannedWorkoutsPerWeek: p.perWeek || 3, days, daysLogged: days.filter(d => d.logged).length,
+      weightWeekAgo: before ? before.kg : null, weightNow: JF.currentWeight()
+    };
+    btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:1.25rem;height:1.25rem;border-width:.1875rem;margin:0"></span>ИИ пишет отчёт…';
+    try {
+      const data = await api('/api/report', { stats }, 50000);
+      JF.saveReport(JF.dayKey(JF.weekStart()), data.text);
+      toast('Отчёт готов'); refresh();
+    } catch (e) {
+      btn.disabled = false; btn.innerHTML = icon('spark') + 'Получить отчёт';
+      toast(e.message === 'offline' ? 'Нужен интернет для отчёта' : 'ИИ сейчас не ответил. Попробуй через минуту', 4000);
+    }
+  }
   function weightSheet() {
     let kg = JF.currentWeight();
     openSheet({
@@ -1154,7 +1383,7 @@
         <div class="card pad" style="gap:1rem">
           ${R.available ? '<div id="perm"></div>' : `<div class="note">${icon('info')}<div>Напоминания приходят в Android-приложении JOL Fitness. На сайте их можно настроить, но уведомления не придут.</div></div>`}
           ${s.alarms.length ? `<div>${s.alarms.map(row).join('')}</div>` : `<div class="empty-box"><span class="chip">${icon('bell')}</span>Пока нет напоминаний.<br>Начни с готового набора или добавь своё.</div>
-            <button class="btn btn-lime btn-block" data-preset>${icon('spark')}Готовый набор: вода, тренировки, вес</button>`}
+            <button class="btn btn-lime btn-block" data-preset>${icon('spark')}Готовый набор: вода, тренировки, вес, отчёт</button>`}
           <button class="btn btn-dark btn-block" data-new ${s.alarms.length >= R.MAX_ALARMS ? 'disabled' : ''}>${icon('plus')}Добавить напоминание</button>
         </div>
         <div class="card pad" style="gap:1rem">
@@ -1179,7 +1408,7 @@
           if (t.closest('[data-smart]')) { const st = R.settings(); st.smart = !st.smart; R.save(st); return refresh(); }
           if (t.closest('[data-preset]')) {
             const st = R.settings(), A = R.ALL.slice();
-            [[10, 0, 'water', A], [13, 0, 'water', A], [16, 0, 'water', A], [19, 0, 'water', A], [18, 30, 'workout', [1, 3, 5]], [8, 0, 'weigh', [1]]]
+            [[10, 0, 'water', A], [13, 0, 'water', A], [16, 0, 'water', A], [19, 0, 'water', A], [18, 30, 'workout', [1, 3, 5]], [8, 0, 'weigh', [1]], [20, 0, 'report', [0]]]
               .forEach(([h, m, type, days]) => st.alarms.push({ id: R.newId(), type, hour: h, minute: m, days, on: true }));
             if (R.available) await R.ensurePermission();
             R.save(st); toast('Напоминания добавлены'); return refresh();
@@ -1256,9 +1485,11 @@
         </div>
         <div class="card pad">
           ${accountBlock()}
-          <button class="set-row" data-go-btn="#/workouts"><span class="chip">${icon('activity')}</span>Программа тренировок<span class="end">${esc(D.PROGRAMS.find(x => x.id === JF.program()).title)}${icon('chevR')}</span></button>
+          <button class="set-row" data-go-btn="#/workouts"><span class="chip">${icon('activity')}</span>Программа тренировок<span class="end">${esc(D.find(JF.program()).title)}${icon('chevR')}</span></button>
           <button class="set-row" data-perweek><span class="chip">${icon('calendar')}</span>Тренировок в неделю<span class="end">${p.perWeek || 3}${icon('chevR')}</span></button>
           <button class="set-row" data-go-btn="#/reminders"><span class="chip">${icon('bell')}</span>Напоминания<span class="end">${icon('chevR')}</span></button>
+          <button class="set-row" data-theme-pick><span class="chip">${icon(document.documentElement.getAttribute('data-theme') === 'dark' ? 'moonO' : 'sun')}</span>Оформление<span class="end">${{ system: 'Как в системе', light: 'Светлое', dark: 'Тёмное' }[JF.settings.theme || 'system']}${icon('chevR')}</span></button>
+          ${window.JF_health && JF_health.supported ? `<button class="set-row" data-hc><span class="chip">${icon('steps')}</span>Шаги (Health Connect)<span class="end">${JF_health.connected ? 'подключено' : 'не подключено'}${icon('chevR')}</span></button>` : ''}
           <button class="set-row" data-go-btn="#/help"><span class="chip">${icon('help')}</span>Помощь<span class="end">${icon('chevR')}</span></button>
           <a class="set-row" href="privacy.html"><span class="chip">${icon('shield')}</span>Политика конфиденциальности<span class="end">${icon('chevR')}</span></a>
           ${ACC() && ACC().user ? `<button class="set-row danger" data-del-acc><span class="chip">${icon('trash')}</span>Удалить аккаунт и все данные</button>`
@@ -1270,6 +1501,11 @@
         v.onclick = async e => {
           if (e.target.closest('[data-edit-profile]')) return profileSheet();
           if (e.target.closest('[data-perweek]')) return perWeekSheet();
+          if (e.target.closest('[data-theme-pick]')) return themeSheet();
+          if (e.target.closest('[data-hc]')) {
+            if (JF_health.connected) { JF_health.openSettings(); return; }
+            const r = await JF_health.connect(); toast(r.ok ? 'Health Connect подключён' : 'Не получилось подключить Health Connect', 3500); return refresh();
+          }
           if (e.target.closest('[data-acc-signup]')) return go('#/signup');
           if (e.target.closest('[data-acc-login]')) return go('#/login');
           if (e.target.closest('[data-acc-sync]')) { await ACC().push(); toast(ACC().status.error ? 'Не получилось: ' + ACC().status.error : 'Сохранено в облаке'); return refresh(); }
@@ -1394,7 +1630,10 @@
           if (e.target.closest('[data-pw-eye]')) { pw.type = pw.type === 'password' ? 'text' : 'password'; return; }
           if (e.target.closest('[data-reset]')) {
             if (!/^\S+@\S+\.\S+$/.test(email.value.trim())) return toast('Сначала впиши свой email');
-            try { await A.resetPassword(email.value); toast('Письмо для смены пароля отправлено на ' + email.value.trim()); }
+            try {
+              await A.resetPassword(email.value);
+              toast('Если аккаунт с адресом ' + email.value.trim() + ' существует, письмо придёт в течение пары минут. Проверь папку «Спам».', 7000);
+            }
             catch (err) { toast(A.errText(err)); }
           }
         };
@@ -1403,6 +1642,19 @@
   }
   SCREENS.login = () => authScreen('login');
   SCREENS.signup = arg => authScreen('signup', arg);
+  function themeSheet() {
+    const cur = JF.settings.theme || 'system';
+    openSheet({
+      title: 'Оформление', html: [['system', 'Как в системе', 'Днём светлое, ночью тёмное — как на телефоне', 'refresh'], ['light', 'Светлое', 'Голубой фон, белые карточки', 'sun'], ['dark', 'Тёмное', 'Бережёт глаза вечером', 'moonO']]
+        .map(([v, t, sub, ic]) => `<button class="opt" data-th="${v}" aria-pressed="${cur === v}"><span class="chip">${icon(ic)}</span><span><b>${t}</b><small>${sub}</small></span></button>`).join(''),
+      onMount(sheet, close) {
+        sheet.addEventListener('click', e => {
+          const b = e.target.closest('[data-th]'); if (!b) return;
+          JF.setTheme(b.getAttribute('data-th')); UI.applyTheme(JF.settings.theme); close(); refresh();
+        });
+      }
+    });
+  }
   function perWeekSheet() {
     openSheet({
       title: 'Тренировок в неделю', html: `<div class="seg" style="justify-content:center;margin-bottom:1rem">${[2, 3, 4, 5].map(k => `<button data-k="${k}" aria-pressed="${(JF.profile.perWeek || 3) === k}">${k}</button>`).join('')}</div>
@@ -1479,7 +1731,9 @@
   // новый день, пока приложение открыто
   let lastDay = JF.dayKey();
   setInterval(() => { if (JF.dayKey() !== lastDay) { lastDay = JF.dayKey(); if (current && current.live) refresh(); } }, 60000);
-  const start = () => { const b = document.getElementById('boot'); if (b) b.remove(); render(); };
+  UI.applyTheme(JF.settings.theme || 'system');
+  document.addEventListener('jf:resume-data', () => UI.applyTheme(JF.settings.theme || 'system'));
+  const start = () => { const b = document.getElementById('boot'); if (b) b.remove(); UI.applyTheme(JF.settings.theme || 'system'); render(); };
   if (!JF.profile && ACC()) Promise.race([ACC().ready, new Promise(r => setTimeout(r, 4000))]).then(start);
   else start();
 })();
