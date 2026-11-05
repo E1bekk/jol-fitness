@@ -64,8 +64,8 @@ JOL Fitness — тренировки дома, питание и ИИ-трене
 
 | Что | Размер | Файл |
 |---|---|---|
-| Значок | 512×512 PNG | `store/play-store-icon-512.png` (сделаю после выбора логотипа) |
-| Баннер (Feature graphic) | 1024×500 | `store/feature-graphic-1024x500.png` (сделаю после выбора логотипа) |
+| Значок | 512×512 PNG | `store/play-store-icon-512.png` |
+| Баннер (Feature graphic) | 1024×500 | `store/feature-graphic-1024x500.png` |
 | Скриншоты телефона | 1080×1920, 2–8 штук | `store/screenshot-1.png` … `store/screenshot-6.png` |
 
 ## 4. Раздел «Контент приложения» (App content)

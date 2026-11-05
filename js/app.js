@@ -24,7 +24,7 @@
       <section class="auth-hero">
         <div class="hero-photo" aria-hidden="true"></div>
         <div class="auth-hero-in">
-          <div class="auth-brand"><svg viewBox="0 0 45 45" aria-hidden="true">${logoDots('#d7f17c')}</svg>JOL Fitness</div>
+          <div class="auth-brand"><svg viewBox="0 0 45 45" aria-hidden="true">${logoDots()}</svg>JOL Fitness</div>
           <div>
             <h2>${hero.title}</h2>
             ${hero.sub ? `<p class="auth-sub">${hero.sub}</p>` : ''}
@@ -36,14 +36,15 @@
     </div>`;
   }
 
-  // ===== Логотип: ромб из точек =====
-  function logoDots(color) {
-    let s = '';
-    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
-      if (Math.abs(i - 2) + Math.abs(j - 2) > 2) continue;
-      s += `<circle cx="${(22.5 + (j - 2) * 9.4).toFixed(1)}" cy="${(22.5 + (i - 2) * 9.4).toFixed(1)}" r="3.7" fill="${color || '#8f9f05'}"/>`;
-    }
-    return s;
+  // ===== Логотип: буква J (дорога) с гантелью, зелёный значок =====
+  let logoN = 0;
+  function logoDots() {
+    const id = 'jfl' + (++logoN), k = 45 / 1024;
+    return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fb56f"/><stop offset=".55" stop-color="#1E8F5A"/><stop offset="1" stop-color="#0f5f3b"/></linearGradient></defs>
+      <rect width="45" height="45" rx="11" fill="url(#${id})"/><g transform="scale(${k})">
+      <path d="M660 150V610A210 210 0 0 1 240 610V585" fill="none" stroke="#fff" stroke-width="150"/>
+      <path d="M660 170V610A210 210 0 0 1 240 610V600" fill="none" stroke="url(#${id})" stroke-width="16" stroke-dasharray="44 40" stroke-linecap="round"/>
+      <g fill="#d7f17c"><rect x="150" y="268" width="300" height="34" rx="17"/><rect x="176" y="200" width="56" height="170" rx="22"/><rect x="368" y="200" width="56" height="170" rx="22"/><rect x="128" y="232" width="40" height="106" rx="16"/><rect x="432" y="232" width="40" height="106" rx="16"/></g></g>`;
   }
   $('#logo').innerHTML = logoDots();
 
