@@ -4,6 +4,7 @@
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
   const go = h => { if (location.hash !== h) location.hash = h; else render(); };
+  const W = (pid, idx) => D.workout(pid, idx, JF.feel(pid));   // тренировка с подстройкой под человека
   const MEALS = [['breakfast', 'Завтрак'], ['lunch', 'Обед'], ['dinner', 'Ужин'], ['snack', 'Перекус']];
   const mealNow = () => { const h = new Date().getHours(); return h < 11 ? 'breakfast' : h < 16 ? 'lunch' : h < 22 ? 'dinner' : 'snack'; };
   const GOALS = { lose: 'Похудеть', keep: 'Держать форму', gain: 'Набрать массу' };
@@ -53,6 +54,7 @@
   let onb = { step: 0, d: {} };
   let pendingScan = null;      // { img, status:'loading'|'done'|'error', items, comment, error }
   let coachBusy = false;
+  let exFilter = 'all';        // фильтр библиотеки упражнений
   let cupPour = null;          // какие стаканы только что наполнились (для анимации)
   let tipSwap = false;         // совет только что сменился (для анимации)
   function setWater(nw) {
@@ -182,7 +184,7 @@
   }
   function proSheet() {
     openSheet({ title: 'JOL Fitness Pro', html: `
-      <div class="note" style="margin-bottom:1rem">${icon('crown')}<div>Сейчас все функции JOL Fitness бесплатны. Скоро появится Pro: персональные программы от ИИ, разбор техники и расширенная статистика.</div></div>
+      <div class="note" style="margin-bottom:1rem">${icon('crown')}<div>Сейчас все функции JOL Fitness бесплатны: программы от ИИ-тренера, сканер еды, напоминания и статистика.</div></div>
       <button class="btn btn-dark btn-block" data-close>Понятно</button>` });
   }
 
@@ -508,7 +510,8 @@
     return '';
   }
   function recommendProgram(d) {
-    const id = d.goal === 'gain' ? 'strength' : d.goal === 'lose' && d.activity >= 1.55 ? 'burn' : 'start';
+    const bmi = d.weight && d.height ? d.weight / Math.pow(d.height / 100, 2) : 22;
+    const id = d.goal === 'gain' ? 'strength' : d.goal === 'lose' && d.activity >= 1.55 && bmi < 30 ? 'burn' : bmi >= 30 || d.age >= 55 ? 'lowimpact' : 'start';
     return D.PROGRAMS.find(p => p.id === id);
   }
 
@@ -516,7 +519,7 @@
   SCREENS.workouts = function () {
     const pid = JF.program(), prog = D.find(pid);
     const next = JF.nextIndex(pid), done = JF.doneList(pid).length, w = JF.currentWeight();
-    const nw = next == null ? null : D.workout(pid, next), np = nw && D.plan(nw, w);
+    const nw = next == null ? null : W(pid, next), np = nw && D.plan(nw, w);
     const total = Object.values(JF.state.days).reduce((s, d) => s + d.workouts.length, 0);
     const exIds = Object.keys(D.EXERCISES);
     return {
@@ -550,9 +553,9 @@
       <div class="sec"><h2>Программы</h2></div>
       <div class="grid grid-2">
         ${D.all().map(p => {
-          const dn = JF.doneList(p.id).length, pl = D.plan(D.workout(p.id, 0), w);
+          const dn = JF.doneList(p.id).length, pl = D.plan(W(p.id, 0), w);
           return `<button class="card pad prog-card tap ${p.id === pid ? 'is-current' : ''}" data-go-btn="#/program/${p.id}">
-            <div class="c-head"><span class="prog-dot" style="background:${p.color}">${icon(p.ai ? 'spark' : p.id === 'mobility' ? 'leaf' : p.id === 'burn' ? 'flame' : 'dumbbell')}</span>
+            <div class="c-head"><span class="prog-dot" style="background:${p.color}">${icon(p.ai ? 'spark' : ({ mobility: 'leaf', burn: 'flame', morning: 'sun', lowimpact: 'run', abs: 'activity' })[p.id] || 'dumbbell')}</span>
               <span class="pills">${p.ai ? '<span class="pill">ИИ</span>' : ''}${p.id === pid ? '<span class="pill lime">Текущая</span>' : ''}</span></div>
             <div><div class="h3">${esc(p.title)}</div><div class="muted" style="font-size:.875rem;margin-top:.25rem">${esc(p.sub)}</div></div>
             <div class="pills"><span class="pill">${esc(p.level)}</span><span class="pill">${icon('calendar')}${p.count} трен.</span><span class="pill">${icon('timer')}~${pl.min} мин</span></div>
@@ -560,11 +563,12 @@
           </button>`;
         }).join('')}
       </div>
-      <div class="sec"><h2>Упражнения</h2></div>
+      <div class="sec"><h2>Упражнения · ${exIds.length}</h2></div>
+      <div class="chips ex-filter">${[['all', 'Все']].concat(Object.entries(D.GROUP_NAMES)).map(([k, t]) => `<button data-exf="${k}" class="${exFilter === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="card pad"><div class="list">
-        ${exIds.map(id => { const ex = D.EXERCISES[id]; return `<button class="li" data-ex="${id}"><span class="ex-thumb">${JF_ANIM.still(id)}</span><span class="li-main"><b>${esc(ex.name)}</b><small>${esc(ex.muscles)}</small></span>${icon('chevR').replace('<svg', '<svg style="width:1rem;height:1rem;color:var(--muted-2)"')}</button>`; }).join('')}
+        ${exIds.filter(id => exFilter === 'all' || (D.EXERCISES[id].groups || []).includes(exFilter)).map(id => { const ex = D.EXERCISES[id]; return `<button class="li" data-ex="${id}"><span class="ex-thumb">${JF_ANIM.still(id)}</span><span class="li-main"><b>${esc(ex.name)}</b><small>${esc(ex.muscles)}${ex.impact === 'high' ? ' · с прыжками' : ''} · ${'●'.repeat(ex.lvl || 1)}${'○'.repeat(3 - (ex.lvl || 1))}</small></span>${icon('chevR').replace('<svg', '<svg style="width:1rem;height:1rem;color:var(--muted-2)"')}</button>`; }).join('')}
       </div></div>`,
-      mount(v) { v.onclick = e => { if (e.target.closest('[data-ai-plan]')) return planSheet(); commonClicks(e); }; }
+      mount(v) { v.onclick = e => { if (e.target.closest('[data-ai-plan]')) return planSheet(); const f = e.target.closest('[data-exf]'); if (f) { exFilter = f.getAttribute('data-exf'); return refresh(); } commonClicks(e); }; }
     };
   };
   function commonClicks(e) {
@@ -612,7 +616,7 @@
         </div>
         <div class="card pad"><div class="list">
           ${Array.from({ length: p.count }, (_, i) => {
-            const wk = D.workout(pid, i), pl = D.plan(wk, w), isDone = done.includes(i), isNext = i === next;
+            const wk = W(pid, i), pl = D.plan(wk, w), isDone = done.includes(i), isNext = i === next;
             return `<button class="li ${isDone ? 'done' : isNext ? 'next' : ''}" data-go-btn="#/workout/${pid}/${i}">
               <span class="chip">${isDone ? icon('check') : `<b>${i + 1}</b>`}</span>
               <span class="li-main"><b>${esc(wk.short)}</b><small>${pl.min} мин · ~${pl.kcal} ккал · ${wk.rounds} ${plural(wk.rounds, 'раунд', 'раунда', 'раундов')}</small></span>
@@ -639,7 +643,7 @@
     const p = D.find(pid);
     idx = +idx;
     if (!p || !(idx >= 0 && idx < p.count)) return { redirect: '#/workouts' };
-    const wk = D.workout(pid, idx), pl = D.plan(wk, JF.currentWeight()), isDone = JF.doneList(pid).includes(idx);
+    const wk = W(pid, idx), pl = D.plan(wk, JF.currentWeight()), isDone = JF.doneList(pid).includes(idx);
     return {
       nav: 'workouts',
       top: { title: wk.short, sub: `${p.title} · день ${idx + 1}`, back: '#/program/' + pid },
@@ -665,7 +669,7 @@
     const p = D.find(pid);
     idx = +idx;
     if (!p || !(idx >= 0 && idx < p.count)) return { redirect: '#/workouts' };
-    const wk = D.workout(pid, idx), weight = JF.currentWeight(), plan = D.plan(wk, weight);
+    const wk = W(pid, idx), weight = JF.currentWeight(), plan = D.plan(wk, weight);
     const steps = [];
     for (let r = 0; r < wk.rounds; r++) wk.items.forEach((it, k) => {
       steps.push({ kind: 'ex', it, r, k });
@@ -723,6 +727,9 @@
           <div class="kpi"><b>~${kcal}</b><span>ккал</span></div>
           <div class="kpi"><b>${st.doneEx}</b><span>${plural(st.doneEx, 'упражнение', 'упражнения', 'упражнений')}</span></div>
         </div>
+        <div class="feel" data-feel-box><div class="h3" style="margin-bottom:.625rem">Как прошла тренировка?</div>
+          <div class="seg" style="justify-content:center"><button data-feel="easy">😌 Легко</button><button data-feel="ok">🙂 Нормально</button><button data-feel="hard">😮‍💨 Тяжело</button></div>
+          <p class="disclaimer">Подстроим нагрузку следующих тренировок под тебя</p></div>
         <div class="pl-ctrl" style="width:100%;max-width:26rem;flex-direction:column">
           <button class="btn btn-dark btn-block" data-go-btn="#/home">На главную</button>
           <button class="btn btn-ghost btn-block" data-go-btn="#/coach">${icon('chat')}Спросить ИИ-тренера</button>
@@ -786,6 +793,13 @@
         st.timer = setInterval(tick, 250);
         window.JF_onBack = quit;
         v.onclick = e => {
+          const fb = e.target.closest('[data-feel]');
+          if (fb) {
+            const f = fb.getAttribute('data-feel'), k = JF.rateWorkout(pid, f);
+            const box = $('[data-feel-box]', view);
+            if (box) box.innerHTML = `<div class="note">${icon('check')}<div>${f === 'easy' ? 'Отлично! Следующие тренировки станут чуть тяжелее' : f === 'hard' ? 'Понял — следующие тренировки будут чуть легче' : 'Хорошо, нагрузку оставляем'} (нагрузка ×${dec(k, 2)}).</div></div>`;
+            return;
+          }
           if (e.target.closest('[data-start]')) { st.started = Date.now(); return startStep(0); }
           if (e.target.closest('[data-done]')) return completeEx();
           if (e.target.closest('[data-skip]')) { const s = steps[st.i]; return s && s.kind === 'rest' ? startStep(st.i + 1) : completeEx(); }
@@ -871,12 +885,12 @@
     return new Promise((res, rej) => {
       const url = URL.createObjectURL(file), img = new Image();
       img.onload = () => {
-        const k = Math.min(1, 1024 / Math.max(img.width, img.height));
+        const k = Math.min(1, 1280 / Math.max(img.width, img.height));
         const c = document.createElement('canvas');
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
         URL.revokeObjectURL(url);
-        res(c.toDataURL('image/jpeg', 0.82));
+        res(c.toDataURL('image/jpeg', 0.86));
       };
       img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('bad image')); };
       img.src = url;
@@ -904,11 +918,13 @@
     s.status = 'loading'; s.error = '';
     if (parse().name === 'scan') refresh();
     try {
-      const data = await api('/api/scan', { image: s.img.split(',')[1], mimeType: 'image/jpeg' }, 62000);
+      // справочник калорийности для ИИ (на 100 г) — чтобы цифры совпадали с нашими продуктами
+      const ref = D.FOODS.map(f => `${f.name} ${f.kcal}/${f.p}/${f.f}/${f.c}`).join('; ');
+      const data = await api('/api/scan', { image: s.img.split(',')[1], mimeType: 'image/jpeg', hint: s.hint || '', ref }, 64000);
       if (pendingScan !== s) return;
       s.items = (data.items || []).map(it => {
         const g = Math.max(1, +it.grams || 100);
-        return { name: String(it.name || 'Блюдо').slice(0, 60), grams: Math.round(g),
+        return { name: String(it.name || 'Блюдо').slice(0, 60), grams: Math.round(g), conf: it.confidence || 'medium',
           per: { kcal: (+it.kcal || 0) / g, p: (+it.protein || 0) / g, f: (+it.fat || 0) / g, c: (+it.carbs || 0) / g } };
       });
       s.comment = data.comment || '';
@@ -937,16 +953,18 @@
       const tot = s.items.reduce((a, x) => { const v = it(x); a.kcal += v.kcal; a.p += v.p; a.f += v.f; a.c += v.c; return a; }, { kcal: 0, p: 0, f: 0, c: 0 });
       body = `<div class="card pad">
         <div class="h3" style="margin-bottom:.875rem">Что нашёл ИИ</div>
-        ${s.items.map((x, k) => { const v = it(x); return `<div class="scan-item"><div class="top"><b>${esc(x.name)}</b><span class="kc">${num(v.kcal)} ккал</span></div>
+        ${s.items.map((x, k) => { const v = it(x); return `<div class="scan-item"><div class="top"><b>${esc(x.name)}${x.conf === 'low' ? ' <span class="pill" title="ИИ не уверен — проверь вес">примерно</span>' : ''}</b><span class="kc">${num(v.kcal)} ккал</span></div>
           <div class="mac">Б ${dec(v.p)} г · Ж ${dec(v.f)} г · У ${dec(v.c)} г</div>
           <div class="g"><button data-g="${k}:-25" aria-label="Меньше">${icon('minus')}</button><span>${x.grams} г</span><button data-g="${k}:25" aria-label="Больше">${icon('plus')}</button>
           <button class="rm" data-rm="${k}" aria-label="Убрать">${icon('trash')}</button></div></div>`; }).join('')}
         ${s.comment ? `<p class="muted" style="font-size:.8125rem;margin:.25rem 0 .75rem">${esc(s.comment)}</p>` : ''}
+        <div class="hint-box"><input class="input" id="sc-hint" maxlength="200" value="${esc(s.hint || '')}" placeholder="Уточни: «это 3 манты», «порция 400 г», «без масла»">
+          <button class="btn btn-ghost btn-sm" data-rehint>${icon('refresh')}Пересчитать</button></div>
         <div class="scan-sum"><span class="muted">Итого</span><b>${num(tot.kcal)} ккал</b></div>
         <label class="label">Приём пищи</label>
         <div class="seg" data-meal style="margin-bottom:1.25rem">${MEALS.map(([k, n]) => `<button data-v="${k}" aria-pressed="${s.meal === k}">${n}</button>`).join('')}</div>
         <button class="btn btn-dark btn-block" data-save>${icon('check')}Добавить в дневник</button>
-        <p class="disclaimer">Вес порции ИИ оценивает по фото примерно. Поправь граммы кнопками «−» и «+».</p></div>`;
+        <p class="disclaimer">ИИ оценивает вес по фото. Если не совпадает — поправь граммы кнопками «−» и «+» или напиши уточнение и нажми «Пересчитать».</p></div>`;
     }
     return {
       nav: 'food',
@@ -961,6 +979,7 @@
           const m = e.target.closest('[data-meal] [data-v]');
           if (m) { s.meal = m.getAttribute('data-v'); return refresh(); }
           if (e.target.closest('[data-retry]')) return runScan();
+          if (e.target.closest('[data-rehint]')) { s.hint = $('#sc-hint', v).value.trim(); if (!s.hint) return toast('Напиши уточнение, например «это 3 манты»'); return runScan(); }
           if (e.target.closest('[data-manual]')) return addFoodSheet(null, s.meal);
           if (e.target.closest('[data-save]')) {
             s.items.forEach(x => { const val = it(x); JF.addMeal({ name: x.name, grams: x.grams, meal: s.meal, kcal: val.kcal, p: val.p, f: val.f, c: val.c, src: 'ai' }); });
@@ -1079,7 +1098,8 @@
   // ---------- Программа от ИИ-тренера ----------
   function planSheet() {
     const p = JF.profile;
-    const o = { days: p.perWeek || 3, minutes: 25, level: 'beginner', focus: p.goal === 'lose' ? 'Похудение' : p.goal === 'gain' ? 'Сила и мышцы' : 'Всё тело', wish: '' };
+    const o = { days: p.perWeek || 3, minutes: 25, level: 'beginner', focus: p.goal === 'lose' ? 'Похудение' : p.goal === 'gain' ? 'Сила и мышцы' : 'Всё тело', wish: '', limits: [] };
+    const LIMITS = [['knees', 'Колени'], ['back', 'Поясница'], ['wrists', 'Запястья'], ['shoulders', 'Плечи'], ['nojump', 'Без прыжков']];
     const FOCUS = ['Всё тело', 'Похудение', 'Сила и мышцы', 'Ноги и ягодицы', 'Пресс и кор', 'Руки и спина', 'Здоровая спина', 'Гибкость'];
     const seg = (key, items) => `<div class="seg" data-o="${key}" style="margin-bottom:1.125rem">${items.map(([v, t]) => `<button data-v="${v}" aria-pressed="${String(o[key]) === String(v)}">${t}</button>`).join('')}</div>`;
     openSheet({
@@ -1093,6 +1113,8 @@
               <label class="label">Время на одну тренировку</label>${seg('minutes', [[15, '15 мин'], [25, '25 мин'], [35, '35 мин'], [45, '45 мин']])}
               <label class="label">Уровень</label>${seg('level', [['beginner', 'Новичок'], ['middle', 'Средний'], ['advanced', 'Продвинутый']])}
               <label class="label">Акцент</label>${seg('focus', FOCUS.map(f => [f, f]))}
+              <label class="label">Что беречь (можно несколько)</label>
+              <div class="seg" data-limits style="margin-bottom:1.125rem">${LIMITS.map(([v, t]) => `<button data-v="${v}" aria-pressed="${o.limits.includes(v)}">${t}</button>`).join('')}</div>
               <div class="field"><label class="label" for="pl-wish">Пожелания (необязательно)</label>
                 <input class="input" id="pl-wish" maxlength="200" value="${esc(o.wish)}" placeholder="Например: болит колено, без прыжков"></div>
               <button class="btn btn-dark btn-block" data-make>${icon('spark')}Составить программу</button>
@@ -1100,13 +1122,15 @@
         };
         draw();
         sheet.addEventListener('click', async e => {
+          const lb = e.target.closest('[data-limits] [data-v]');
+          if (lb) { const w = $('#pl-wish', sheet); if (w) o.wish = w.value; const v = lb.getAttribute('data-v'); o.limits = o.limits.includes(v) ? o.limits.filter(x => x !== v) : o.limits.concat(v); return draw(); }
           const b = e.target.closest('[data-o] [data-v]');
           if (b) { const k = b.closest('[data-o]').getAttribute('data-o'); const w = $('#pl-wish', sheet); if (w) o.wish = w.value; o[k] = /^\d+$/.test(b.getAttribute('data-v')) ? +b.getAttribute('data-v') : b.getAttribute('data-v'); return draw(); }
           if (!e.target.closest('[data-make]') || busy) return;
           o.wish = ($('#pl-wish', sheet) || {}).value || '';
           busy = true; draw();
           try {
-            const exercises = Object.keys(D.EXERCISES).map(id => ({ id, name: D.EXERCISES[id].name, type: D.EXERCISES[id].type, muscles: D.EXERCISES[id].muscles }));
+            const exercises = Object.keys(D.EXERCISES).map(id => { const x = D.EXERCISES[id]; return { id, name: x.name, type: x.type, muscles: x.muscles, groups: x.groups, lvl: x.lvl, impact: x.impact, avoid: x.avoid, sides: !!x.sides }; });
             const prof = { sex: p.sex === 'f' ? 'женский' : 'мужской', age: p.age, weight: JF.currentWeight(), height: p.height, goal: GOALS[p.goal] };
             const data = await api('/api/plan', Object.assign({}, o, { exercises, profile: prof }), 55000);
             const pr = data.program;
@@ -1170,8 +1194,23 @@
       goal: GOALS[p.goal], goalWeight: p.goalWeight, activity: (ACTIVITY.find(a => a[0] === p.activity) || [0, ''])[1],
       norms: { kcal: n.kcal, protein: n.protein, fat: n.fat, carbs: n.carbs, waterL: +(n.waterMl / 1000).toFixed(2) },
       today: { kcal: t.kcal, protein: t.p, fat: t.f, carbs: t.c, waterGlasses: d.water, steps: d.steps || 0, workouts: d.workouts.map(w => w.title), meals: d.meals.map(m => m.name).slice(0, 15) },
-      program: `${prog.title}: пройдено ${JF.doneList(pid).length} из ${prog.count}`, workoutsThisWeek: JF.weekWorkouts()
+      program: `${prog.title}: пройдено ${JF.doneList(pid).length} из ${prog.count}`, workoutsThisWeek: JF.weekWorkouts(), plannedPerWeek: p.perWeek || 3,
+      last7days: last7(), weightTrend: JF.weights().slice(-6).map(w => `${w.d}: ${w.kg}`),
+      recentWorkouts: recentWorkouts(), localTime: new Date().toTimeString().slice(0, 5)
     };
+  }
+  // краткая сводка за 7 дней для ИИ-тренера и отчёта
+  function last7() {
+    const days = Array.from({ length: 7 }, (_, i) => JF.peek(JF.dayKey(JF.addDays(new Date(), -i - 1))));
+    const logged = days.filter(x => x.meals.length || x.water || x.workouts.length);
+    const avg = f => logged.length ? Math.round(logged.reduce((a, x) => a + f(x), 0) / logged.length) : 0;
+    return { daysWithData: logged.length, avgKcal: avg(x => JF.totals(x).kcal), avgProtein: avg(x => JF.totals(x).p), avgWaterGlasses: avg(x => x.water),
+      workouts: days.reduce((a, x) => a + x.workouts.length, 0), avgSteps: avg(x => x.steps || 0) };
+  }
+  function recentWorkouts() {
+    const out = [];
+    for (let i = 0; i < 14 && out.length < 5; i++) { const k = JF.dayKey(JF.addDays(new Date(), -i)); JF.peek(k).workouts.forEach(w => out.push(`${k}: ${w.title}${w.feel ? ' (' + w.feel + ')' : ''}`)); }
+    return out;
   }
   async function send(text) {
     text = String(text || '').trim();

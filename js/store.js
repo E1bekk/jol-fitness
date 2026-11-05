@@ -167,6 +167,17 @@
       touchDay(); touchMain(); save();
     },
     setProgram(pid) { S.program.id = pid; touchMain(); save(); },
+    // «легко / нормально / тяжело» после тренировки → коэффициент нагрузки программы
+    rateWorkout(pid, feel) {
+      const adj = S.program.adjust || (S.program.adjust = {});
+      const cur = adj[pid] || 1;
+      adj[pid] = Math.min(1.5, Math.max(0.7, +(cur * (feel === 'easy' ? 1.1 : feel === 'hard' ? 0.9 : 1)).toFixed(2)));
+      const d = day(); const last = d.workouts[d.workouts.length - 1];
+      if (last) { last.feel = { easy: 'легко', ok: 'нормально', hard: 'тяжело' }[feel]; touchDay(); }
+      touchMain(); save();
+      return adj[pid];
+    },
+    feel(pid) { return (S.program.adjust || {})[pid] || 1; },
     resetProgram(pid) { S.program.done[pid] = []; touchMain(); save(); },
     addWeight(kg, k) {
       k = k || dayKey();

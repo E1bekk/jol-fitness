@@ -55,6 +55,81 @@
       how: 'Стоя прямо, поднимись на носки как можно выше, задержись на секунду и медленно опустись.' }
   };
 
+  // ===== Новые упражнения (версия 1.1) =====
+  Object.assign(EXERCISES, {
+    'march': { name: 'Ходьба на месте', type: 'time', met: 3.5, icon: 'run', muscles: 'Кардио, разминка',
+      how: 'Шагай на месте, поднимая колени до середины бедра и работая руками. Спина прямая, дыхание ровное. Подходит для разминки и при больных коленях.' },
+    'butt-kicks': { name: 'Захлёст голени', type: 'time', met: 7, icon: 'run', muscles: 'Кардио, задняя поверхность бедра',
+      how: 'Бег на месте, стараясь коснуться пятками ягодиц. Корпус прямой, приземляйся на носки.' },
+    'sumo-squat': { name: 'Сумо-приседания', type: 'reps', met: 5, icon: 'dumbbell', muscles: 'Внутренняя поверхность бедра, ягодицы',
+      how: 'Ноги широко, носки развёрнуты наружу. Опускайся вниз, разводя колени в стороны по линии носков. Спина прямая, вес на пятках.' },
+    'reverse-lunge': { name: 'Обратные выпады', type: 'reps', met: 5, icon: 'run', sides: true, muscles: 'Ягодицы, бёдра',
+      how: 'Шагни одной ногой назад и опустись, пока оба колена не согнутся под прямым углом. Мягче для коленей, чем выпады вперёд.' },
+    'side-lunge': { name: 'Боковые выпады', type: 'reps', met: 5, icon: 'run', sides: true, muscles: 'Бёдра, ягодицы',
+      how: 'Широкий шаг в сторону, присядь на эту ногу, вторая остаётся прямой. Таз назад, колено над носком. Оттолкнись и вернись.' },
+    'step-ups': { name: 'Зашагивания на стул', type: 'reps', met: 6, icon: 'run', sides: true, muscles: 'Ягодицы, бёдра',
+      how: 'Поставь ногу на устойчивый стул или ступеньку и поднимись, выпрямляя ногу. Опускайся медленно. Толкайся пяткой.' },
+    'single-leg-bridge': { name: 'Мост на одной ноге', type: 'reps', met: 4.5, icon: 'dumbbell', sides: true, muscles: 'Ягодицы, задняя поверхность бедра',
+      how: 'Как обычный ягодичный мост, но одна нога выпрямлена вверх. Поднимай таз за счёт опорной ноги, таз не перекашивай.' },
+    'donkey-kicks': { name: 'Махи ногой назад', type: 'reps', met: 4, icon: 'dumbbell', sides: true, muscles: 'Ягодицы',
+      how: 'Стоя на четвереньках, поднимай согнутую ногу пяткой к потолку, сжимая ягодицу. Поясница не прогибается.' },
+    'incline-pushups': { name: 'Отжимания от стула', type: 'reps', met: 5, icon: 'dumbbell', muscles: 'Грудь, руки — облегчённо',
+      how: 'Руки на краю устойчивого стула или дивана, тело прямое. Сгибай руки, опуская грудь к опоре. Отличный шаг к обычным отжиманиям.' },
+    'knee-pushups': { name: 'Отжимания с колен', type: 'reps', met: 5.5, icon: 'dumbbell', muscles: 'Грудь, руки, кор',
+      how: 'Упор на ладони и колени, тело от головы до колен — прямая линия. Опускай грудь к полу, локти под 45° к телу.' },
+    'pike-pushups': { name: 'Отжимания «пайк»', type: 'reps', met: 7, icon: 'dumbbell', muscles: 'Плечи, трицепс',
+      how: 'Встань в «горку»: таз вверх, руки и ноги на полу. Сгибай руки, опуская голову к полу между ладонями, затем выжимай обратно.' },
+    'plank-shoulder-tap': { name: 'Планка с касанием плеч', type: 'time', met: 6, icon: 'timer', muscles: 'Кор, плечи',
+      how: 'Из высокой планки по очереди касайся рукой противоположного плеча. Ноги шире, таз не раскачивается.' },
+    'dead-bug': { name: '«Мёртвый жук»', type: 'reps', met: 3.5, icon: 'leaf', sides: true, muscles: 'Глубокие мышцы пресса',
+      how: 'Лёжа на спине, руки вверх, ноги согнуты под 90°. Медленно опускай противоположные руку и ногу к полу, поясница прижата. Безопасно для спины.' },
+    'bicycle-crunch': { name: 'Велосипед', type: 'reps', met: 5, icon: 'dumbbell', sides: true, muscles: 'Пресс, косые мышцы',
+      how: 'Лёжа на спине, руки за головой. Тянись локтем к противоположному колену, другую ногу выпрямляй. Не тяни шею руками.' },
+    'russian-twist': { name: 'Русские скручивания', type: 'reps', met: 4.5, icon: 'dumbbell', muscles: 'Косые мышцы живота',
+      how: 'Сидя, корпус отклонён назад, ноги согнуты. Поворачивай корпус вправо-влево, касаясь руками пола рядом с бедром.' },
+    'flutter-kicks': { name: 'Ножницы', type: 'time', met: 4.5, icon: 'dumbbell', muscles: 'Низ пресса',
+      how: 'Лёжа на спине, приподними прямые ноги над полом и делай быстрые маленькие махи вверх-вниз. Поясница прижата.' },
+    'jump-rope': { name: 'Прыжки «скакалка»', type: 'time', met: 9, icon: 'zap', muscles: 'Кардио, икры',
+      how: 'Прыгай на носках, как со скакалкой, вращая кистями. Прыжки невысокие и частые, колени чуть согнуты.' },
+    'inchworm': { name: '«Гусеница»', type: 'reps', met: 5, icon: 'leaf', muscles: 'Всё тело, растяжка',
+      how: 'Наклонись, поставь ладони на пол и «прошагай» руками вперёд до планки. Затем мелкими шагами подведи ноги к рукам и выпрямись.' },
+    'cobra': { name: 'Поза кобры', type: 'time', met: 2, icon: 'leaf', muscles: 'Спина, пресс — растяжка',
+      how: 'Лёжа на животе, ладони под плечами. Мягко выпрями руки, поднимая грудь, таз остаётся на полу. Плечи опущены.' },
+    'quad-stretch': { name: 'Растяжка бедра стоя', type: 'time', met: 2.3, icon: 'leaf', sides: true, muscles: 'Передняя поверхность бедра',
+      how: 'Стоя, возьми рукой стопу и подтяни пятку к ягодице. Колени рядом, таз чуть вперёд. Держись за стену при необходимости.' },
+    'arm-circles': { name: 'Круги руками', type: 'time', met: 3, icon: 'refresh', muscles: 'Плечи, разминка',
+      how: 'Руки в стороны на уровне плеч. Делай круги: маленькие, потом больше. Через половину времени — в обратную сторону.' },
+    'good-morning': { name: 'Наклоны «гуд морнинг»', type: 'reps', met: 3.5, icon: 'dumbbell', muscles: 'Задняя поверхность бедра, спина',
+      how: 'Руки за головой, колени чуть согнуты. Наклоняйся вперёд с прямой спиной, отводя таз назад, до параллели с полом. Возвращайся.' }
+  });
+
+  // ===== Метки для ИИ-тренера: какие мышцы, уровень, ударная нагрузка, кому лучше избегать =====
+  // g — группы: legs ноги, glutes ягодицы, chest грудь, arms руки, shoulders плечи, back спина, core пресс/кор, cardio кардио, mobility гибкость
+  // lvl 1–3, imp — high (прыжки) или low, avoid — knees колени, back поясница, wrists запястья, shoulders плечи
+  const TAGS = {
+    'jumping-jacks': ['cardio', 1, 'high', 'knees'], 'squats': ['legs glutes', 1, 'low', ''], 'pushups': ['chest arms core', 2, 'low', 'wrists shoulders'],
+    'lunges': ['legs glutes', 2, 'low', 'knees'], 'plank': ['core', 1, 'low', 'wrists'], 'glute-bridge': ['glutes back', 1, 'low', ''],
+    'mountain': ['cardio core', 2, 'high', 'wrists'], 'burpees': ['cardio legs chest', 3, 'high', 'knees wrists back'], 'high-knees': ['cardio legs', 2, 'high', 'knees'],
+    'crunches': ['core', 1, 'low', 'back'], 'side-plank': ['core', 2, 'low', 'shoulders'], 'superman': ['back glutes', 1, 'low', ''],
+    'wall-sit': ['legs', 1, 'low', 'knees'], 'tricep-dips': ['arms shoulders', 2, 'low', 'shoulders wrists'], 'leg-raises': ['core', 2, 'low', 'back'],
+    'jump-squats': ['legs glutes cardio', 3, 'high', 'knees'], 'skater': ['cardio legs', 2, 'high', 'knees'], 'bird-dog': ['core back', 1, 'low', ''],
+    'cat-cow': ['mobility back', 1, 'low', ''], 'child-pose': ['mobility back', 1, 'low', ''], 'hamstring-stretch': ['mobility legs', 1, 'low', ''],
+    'hip-flexor': ['mobility legs', 1, 'low', ''], 'chest-opener': ['mobility chest shoulders', 1, 'low', ''], 'calf-raises': ['legs', 1, 'low', ''],
+    'march': ['cardio', 1, 'low', ''], 'butt-kicks': ['cardio legs', 1, 'high', 'knees'], 'sumo-squat': ['legs glutes', 1, 'low', ''],
+    'reverse-lunge': ['legs glutes', 1, 'low', ''], 'side-lunge': ['legs glutes', 2, 'low', 'knees'], 'step-ups': ['legs glutes cardio', 1, 'low', ''],
+    'single-leg-bridge': ['glutes', 2, 'low', ''], 'donkey-kicks': ['glutes', 1, 'low', 'wrists'], 'incline-pushups': ['chest arms', 1, 'low', ''],
+    'knee-pushups': ['chest arms', 1, 'low', 'wrists'], 'pike-pushups': ['shoulders arms', 3, 'low', 'wrists shoulders'], 'plank-shoulder-tap': ['core shoulders', 2, 'low', 'wrists'],
+    'dead-bug': ['core', 1, 'low', ''], 'bicycle-crunch': ['core', 2, 'low', 'back'], 'russian-twist': ['core', 2, 'low', 'back'],
+    'flutter-kicks': ['core', 2, 'low', 'back'], 'jump-rope': ['cardio legs', 2, 'high', 'knees'], 'inchworm': ['mobility core shoulders', 2, 'low', 'wrists'],
+    'cobra': ['mobility back', 1, 'low', ''], 'quad-stretch': ['mobility legs', 1, 'low', ''], 'arm-circles': ['mobility shoulders', 1, 'low', ''],
+    'good-morning': ['back legs', 1, 'low', '']
+  };
+  Object.keys(TAGS).forEach(id => {
+    const [g, lvl, imp, avoid] = TAGS[id], ex = EXERCISES[id];
+    if (ex) Object.assign(ex, { groups: g.split(' '), lvl, impact: imp, avoid: avoid ? avoid.split(' ') : [] });
+  });
+  const GROUP_NAMES = { legs: 'Ноги', glutes: 'Ягодицы', chest: 'Грудь', arms: 'Руки', shoulders: 'Плечи', back: 'Спина', core: 'Пресс', cardio: 'Кардио', mobility: 'Растяжка' };
+
   // ===== Программы =====
   // Тренировки программы строятся из шаблонов: каждый следующий круг шаблонов
   // чуть тяжелее (больше повторений/секунд, потом ещё один раунд).
@@ -76,9 +151,28 @@
     { id: 'strength', title: 'Сила без железа', sub: 'Мышцы и тонус', level: 'Средний', count: 12, rest: 30, color: '#0179da',
       about: 'Силовые упражнения с весом своего тела. Больше повторений и раундов от недели к неделе.',
       templates: [
-        { title: 'Грудь и руки', items: [['pushups', 12], ['tricep-dips', 12], ['plank', 40], ['pushups', 10], ['superman', 12]] },
-        { title: 'Ноги и ягодицы', items: [['squats', 20], ['lunges', 12], ['glute-bridge', 18], ['wall-sit', 45], ['calf-raises', 20]] },
+        { title: 'Грудь и руки', items: [['pushups', 12], ['tricep-dips', 12], ['pike-pushups', 8], ['plank-shoulder-tap', 30], ['superman', 12]] },
+        { title: 'Ноги и ягодицы', items: [['squats', 20], ['reverse-lunge', 12], ['single-leg-bridge', 10], ['side-lunge', 10], ['wall-sit', 45], ['calf-raises', 20]] },
         { title: 'Пресс и спина', items: [['crunches', 18], ['leg-raises', 12], ['side-plank', 30], ['superman', 14], ['bird-dog', 10]] }
+      ] },
+    { id: 'lowimpact', title: 'Без прыжков', sub: 'Бережно к коленям · тихо для соседей', level: 'Новичок', count: 12, rest: 20, color: '#5db0e9',
+      about: 'Тренировки без прыжков и ударной нагрузки: подходят при лишнем весе, после перерыва и если беспокоят колени.',
+      templates: [
+        { title: 'Ноги и кор', items: [['march', 40], ['sumo-squat', 12], ['reverse-lunge', 8], ['glute-bridge', 15], ['dead-bug', 6], ['calf-raises', 15]] },
+        { title: 'Верх тела', items: [['arm-circles', 30], ['incline-pushups', 10], ['plank-shoulder-tap', 25], ['superman', 10], ['bird-dog', 6]] },
+        { title: 'Всё тело', items: [['march', 40], ['step-ups', 8], ['knee-pushups', 8], ['good-morning', 12], ['single-leg-bridge', 8], ['side-plank', 20]] }
+      ] },
+    { id: 'morning', title: 'Утренняя зарядка', sub: '10 минут · проснуться и размяться', level: 'Любой', count: 10, rest: 10, color: '#d2a400',
+      about: 'Короткая зарядка на каждое утро: разогревает суставы, снимает скованность и бодрит лучше кофе.',
+      templates: [
+        { title: 'Бодрое утро', items: [['arm-circles', 30], ['march', 40], ['cat-cow', 30], ['good-morning', 10], ['quad-stretch', 20], ['jumping-jacks', 25]] },
+        { title: 'Мягкое утро', items: [['arm-circles', 30], ['cat-cow', 40], ['inchworm', 5], ['hip-flexor', 25], ['chest-opener', 25]] }
+      ] },
+    { id: 'abs', title: 'Пресс и кор', sub: 'Плоский живот · сильная спина', level: 'Средний', count: 12, rest: 20, color: '#0179da',
+      about: 'Пресс, косые мышцы и мышцы-стабилизаторы спины. Добавляй к любой программе 1–2 раза в неделю.',
+      templates: [
+        { title: 'Пресс А', items: [['dead-bug', 8], ['crunches', 15], ['bicycle-crunch', 10], ['plank', 35], ['superman', 12]] },
+        { title: 'Пресс Б', items: [['flutter-kicks', 30], ['russian-twist', 16], ['leg-raises', 10], ['side-plank', 25], ['bird-dog', 8]] }
       ] },
     { id: 'mobility', title: 'Растяжка и спина', sub: 'Гибкость · без нагрузки', level: 'Любой', count: 8, rest: 10, color: '#5db0e9',
       about: 'Спокойные упражнения для спины, шеи и таза. Хорошо подходят после сидячего дня и в дни отдыха.',
@@ -94,11 +188,13 @@
   const all = () => PROGRAMS.concat(CUSTOM);
   const find = pid => all().find(x => x.id === pid);
 
-  function workout(pid, idx) {
+  // feel — подстройка под человека: после тренировки он отвечает «легко / нормально / тяжело»,
+  // и следующие тренировки этой программы становятся чуть тяжелее или легче (0,7–1,5).
+  function workout(pid, idx, feel) {
     const p = find(pid) || PROGRAMS[0];
     const t = p.templates[idx % p.templates.length];
     const level = Math.floor(idx / p.templates.length);        // какой круг шаблонов
-    const k = 1 + 0.12 * level;
+    const k = (1 + 0.12 * level) * (feel || 1);
     const rounds = 2 + (level >= 2 ? 1 : 0);
     const items = t.items.map(([id, amount]) => {
       const ex = EXERCISES[id];
@@ -171,5 +267,5 @@
       text: '7–10 тысяч шагов в день сжигают больше калорий, чем кажется. Ходи пешком, поднимайся по лестнице, разминайся каждый час.' }
   ];
 
-  window.JF_DATA = { EXERCISES, PROGRAMS, FOODS, TIPS, workout, plan, exSeconds, setCustom, all, find };
+  window.JF_DATA = { EXERCISES, GROUP_NAMES, PROGRAMS, FOODS, TIPS, workout, plan, exSeconds, setCustom, all, find };
 })();

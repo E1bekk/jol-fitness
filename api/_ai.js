@@ -14,7 +14,7 @@ async function withTimeout(promise, ms) {
     try { return await Promise.race([promise, timeout]); } finally { clearTimeout(t); }
 }
 
-async function askGemini(model, system, messages, maxTokens, timeoutMs) {
+async function askGemini(model, system, messages, maxTokens, timeoutMs, json) {
     const key = process.env.GEMINI_API_KEY;
     if (!key) throw new Error('GEMINI_API_KEY not set');
     const base = {
@@ -32,6 +32,8 @@ async function askGemini(model, system, messages, maxTokens, timeoutMs) {
         { temperature: 0.4, maxOutputTokens: maxTokens + 2000, thinkingConfig: { thinkingLevel: 'low' } },
         { temperature: 0.4, maxOutputTokens: maxTokens + 2000 }
     ];
+    // json: просим модель вернуть строго JSON (сканер еды, программа тренировок)
+    if (json) variants.forEach(v => { v.responseMimeType = 'application/json'; v.temperature = 0.2; });
     let lastErr;
     for (const generationConfig of variants) {
         const r = await withTimeout(fetch(
@@ -118,7 +120,7 @@ async function askAI(system, messages, maxTokens = 700, deadlineMs = 45000, opts
     const timeLeft = () => deadlineMs - (Date.now() - started);
     const hasImages = messages.some(m => m.images && m.images.length);
     const per = opts.timeoutMs || 20000;
-    const gem = (opts.geminiModels || GEMINI_MODELS).map(m => ({ name: 'gemini:' + m, run: t => askGemini(m, system, messages, maxTokens, t) }));
+    const gem = (opts.geminiModels || GEMINI_MODELS).map(m => ({ name: 'gemini:' + m, run: t => askGemini(m, system, messages, maxTokens, t, opts.json) }));
     let order;
     if (hasImages) {
         // фото: две модели Gemini, потом Groq с картинками, потом остальные Gemini
