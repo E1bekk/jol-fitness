@@ -184,19 +184,33 @@
     pop.classList.add('open');
   }
   // Кнопка-замок в поле пароля: закрыт — пароль скрыт, открыт (дужка поднимается) — пароль виден
-  const pwEye = () => `<button type="button" class="pw-eye" data-pw-eye aria-label="Показать пароль" aria-pressed="false">
+  const pwEye = () => `<button type="button" class="pw-eye" data-pw-eye tabindex="-1" aria-label="Показать пароль" aria-pressed="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path class="pw-shackle" d="M8 11V7.6a4 4 0 0 1 8 0V11"/><rect class="pw-body" x="4.5" y="10.5" width="15" height="10.5" rx="2.6"/>
       <path class="pw-hole" d="M12 14.6v2.2"/></svg></button>`;
-  document.addEventListener('mousedown', e => { if (e.target.closest('[data-pw-eye]')) e.preventDefault(); }); // клавиатура не закрывается
-  document.addEventListener('click', e => {
-    const b = e.target.closest('[data-pw-eye]'); if (!b) return;
+  // Переключаем сразу при касании (не ждём «клика»), поле не теряет фокус — клавиатура не прыгает,
+  // курсор остаётся на месте. Клик с клавиатуры (Enter/пробел) тоже работает.
+  function togglePw(b) {
     const inp = b.closest('.pw-wrap') && b.closest('.pw-wrap').querySelector('input'); if (!inp) return;
+    const focused = document.activeElement === inp, a = inp.selectionStart, z = inp.selectionEnd;
     const show = inp.type === 'password';
     inp.type = show ? 'text' : 'password';
     b.classList.toggle('is-open', show);
     b.setAttribute('aria-pressed', show ? 'true' : 'false');
     b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+    if (focused) { inp.focus({ preventScroll: true }); try { inp.setSelectionRange(a, z); } catch (e) {} }
+  }
+  let pwPointer = 0;
+  document.addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-pw-eye]'); if (!b || e.button > 0) return;
+    e.preventDefault(); pwPointer = Date.now(); togglePw(b);
+  });
+  document.addEventListener('mousedown', e => { if (e.target.closest('[data-pw-eye]')) e.preventDefault(); });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-pw-eye]'); if (!b) return;
+    e.preventDefault();
+    if (Date.now() - pwPointer < 800) return;   // уже переключили при касании
+    togglePw(b);
   });
 
   function proSheet() {
@@ -1615,7 +1629,7 @@
     const A = ACC();
     openSheet({
       title: 'Удалить аккаунт?', html: `<p class="muted" style="margin:0 0 1rem">Аккаунт ${esc(A.email)} и все данные в облаке и на этом устройстве будут удалены навсегда: профиль, дневник, вес, тренировки, переписка с ИИ-тренером. Восстановить их будет нельзя.</p>
-        <div class="field"><label class="label" for="del-pw">Для подтверждения введи пароль</label><div class="pw-wrap"><input class="input" id="del-pw" type="password" autocomplete="current-password">${pwEye()}</div></div>
+        <div class="field"><label class="label" for="del-pw">Для подтверждения введи пароль</label><div class="pw-wrap"><input class="input" id="del-pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">${pwEye()}</div></div>
         <button class="btn btn-danger btn-block" data-del-ok>${icon('trash')}Удалить навсегда</button>
         <button class="btn btn-ghost btn-block" data-close style="margin-top:.625rem">Отмена</button>`,
       onMount(sheet, close) {
@@ -1652,7 +1666,7 @@
         <form id="auth-form" novalidate>
           <div class="field"><label class="label" for="a-email">Email</label><input class="input" id="a-email" type="email" inputmode="email" autocomplete="email" placeholder="name@mail.com" required></div>
           <div class="field"><label class="label" for="a-pw">Пароль${isUp ? ' (минимум 6 символов)' : ''}</label>
-            <div class="pw-wrap"><input class="input" id="a-pw" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" required>${pwEye()}</div></div>
+            <div class="pw-wrap"><input class="input" id="a-pw" type="password" autocomplete="${isUp ? 'new-password' : 'current-password'}" autocapitalize="off" autocorrect="off" spellcheck="false" required>${pwEye()}</div></div>
           <button class="btn btn-dark btn-block" type="submit" id="a-go">${isUp ? 'Создать аккаунт' : 'Войти'}</button>
         </form>
         ${isUp ? (afterOnb ? `<button class="btn btn-ghost btn-block" data-later style="margin-top:.625rem">Позже</button>` : '')
