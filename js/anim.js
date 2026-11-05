@@ -1,258 +1,435 @@
-// JOL Fitness — анимации упражнений: живой человечек (футболка, шорты, кроссовки, лицо),
-// который показывает движение. Для каждого упражнения заданы 2–4 позы (координаты суставов
-// в квадрате 100×100), между ними фигурка плавно двигается по кругу. Работает без интернета.
+// JOL Fitness — анимации упражнений: живой человечек (футболка, шорты, кроссовки, лицо).
 //
-// Суставы: h — голова, n — плечи, p — таз, s — середина спины (необязательно, для изгиба),
-// ek/hk — локоть/кисть ближней руки, eb/hb — дальней; kk/fk — колено/стопа ближней ноги, kb/fb — дальней.
-// Настройки упражнения: look: -1 — смотрит влево (голова слева, лицом вниз в упоре),
-// view: 'front' — вид спереди, toe: 'up' — носки вверх (сидя/лёжа с прямыми ногами), prop — опора.
+// Как устроено. У человечка настоящий «скелет» с постоянной длиной костей (как у живого человека:
+// голова ≈ 1/7 роста, руки до середины бедра). Для каждого упражнения заданы 2–5 ключевых поз,
+// а между ними плавно меняются УГЛЫ суставов — поэтому руки и ноги не растягиваются, колени
+// и локти гнутся только в свою сторону, а стопы и ладони, стоящие на полу, не скользят.
+//
+// Поза: t — наклон корпуса в градусах (0 — прямо, 90 — горизонтально вперёд, −90 — лёжа на спине),
+//   n — наклон головы относительно корпуса (+ подбородок к груди, − взгляд вверх),
+//   c — изгиб спины (+ округлить, − прогнуть).
+// Руки ak/ab и ноги lk/lb (k — ближняя к нам, b — дальняя), три способа задать:
+//   [a, b] — углы плеча/бедра и предплечья/голени от вертикали вниз (+ вперёд, − назад, 180 — вверх);
+//   R(a, b) — те же углы, но относительно корпуса (рука «за головой» поворачивается вместе с телом);
+//   T(x, y) — куда поставить кисть/стопу (локоть или колено скелет согнёт сам).
+// Положение тела: p: [x, y] — таз; p: [x] + on: 'lk' — таз по x, а высота такая, чтобы стопа lk
+//   стояла на полу; foot: ['lk', x, y] — стопа lk стоит в точке (x, y), тело строится от неё.
+// Вид спереди (view: 'front'): углы рук и ног — отведение в сторону (+ наружу), t — наклон вбок.
 (function () {
-  const G = 89; // уровень пола
-  // ---------- базовые позы ----------
-  const STAND = { h: [50, 17], n: [50, 27], p: [50, 52], ek: [53, 40], hk: [55, 52], eb: [47, 40], hb: [45, 52], kk: [52, 70], fk: [53, G], kb: [48, 70], fb: [47, G] };
-  const FRONT = { h: [50, 17], n: [50, 27], p: [50, 52], ek: [43, 39], hk: [41, 51], eb: [57, 39], hb: [59, 51], kk: [46, 70], fk: [45, G], kb: [54, 70], fb: [55, G] };
-  const P = (base, over) => Object.assign({}, base, over);
-  const shift = (pose, dx, dy) => { const o = {}; for (const k in pose) o[k] = [pose[k][0] + dx, pose[k][1] + dy]; return o; };
-  const shiftY = (pose, dy) => shift(pose, 0, dy);
-  const mirror = pose => { const o = {}; for (const k in pose) o[k] = [100 - pose[k][0], pose[k][1]]; return o; };
-  // высокая планка (голова слева)
-  const PLANK_UP = { h: [21, 53], n: [28, 58], p: [56, 72], ek: [28, 73], hk: [28, G], eb: [31, 73], hb: [31, G], kk: [71, 80], fk: [86, 88], kb: [72, 80], fb: [84, 88] };
-  const PLANK_DOWN = { h: [23, 71], n: [30, 74], p: [57, 81], ek: [37, 77], hk: [28, G], eb: [40, 78], hb: [31, G], kk: [72, 84], fk: [86, 88], kb: [72, 84], fb: [84, 88] };
-  const LIE_BACK = { h: [17, 83], n: [26, 85], p: [52, 86], ek: [36, 87], hk: [46, 88], eb: [36, 87], hb: [46, 88], kk: [64, 70], fk: [74, G], kb: [63, 71], fb: [72, G] };
-  const QUAD = { h: [28, 56], n: [36, 63], p: [62, 63], ek: [36, 76], hk: [36, G], eb: [39, 76], hb: [39, G], kk: [62, G], fk: [78, G], kb: [65, G], fb: [80, G] };
-  const HIPS = { ek: [58, 44], hk: [53, 54], eb: [42, 44], hb: [47, 54] };            // руки на поясе
-  const HEAD_HANDS = { ek: [58, 22], hk: [49, 18], eb: [42, 22], hb: [47, 18] };      // руки за головой
-  const CRUNCH_HANDS = { ek: [24, 76], hk: [20, 81], eb: [26, 77], hb: [21, 82] };
+  const G = 89;                    // уровень щиколотки стоящей ноги (подошва ≈ 92)
+  const L = { torso: 24, neck: 3.4, head: 4.7, up: 13.8, fore: 12.2, thigh: 18.6, shin: 18.6 };
+  const SH = 6.6, HP = 3.8;        // вид спереди: половина ширины плеч и таза
+  const HAND = 89.6;               // уровень запястья ладони на полу
+  const TOE = 84.5;                // уровень щиколотки, когда стоишь на носках в упоре
+  const BENCH = 68.6;              // запястье на краю стула
+  const R = (a, b) => ({ r: [a, b] }), T = (x, y, bend) => ({ to: [x, y], bend });
+
+  // ---------- готовые части поз ----------
+  const HIPS = { ak: [-25, 50], ab: [-22, 48] };                 // руки на поясе (вид сбоку)
+  const DOWN = { ak: [-4, 6], ab: [-2, 9] };                     // руки опущены
+  const STAND = Object.assign({ t: 0, n: 0, lk: [0, 0], lb: [1.5, 0] }, DOWN);
+  const P = (...o) => Object.assign({}, ...o);
+  // упор лёжа на прямых руках: щиколотки в точке (ax, TOE), голова слева
+  const HIGH = (ax, t, o) => P({ foot: ['lk', ax, TOE], t, n: -8, lk: R(0, 0), lb: R(0, 0), ak: T(ax - 55, HAND), ab: T(ax - 52.5, HAND) }, o);
+  // на четвереньках (голова слева)
+  const QUAD = (o) => P({ p: [60, 69.6], t: 76, n: -12, lk: [0, -90], lb: [1.5, -90], ak: [0, 0], ab: [1.5, 1.5] }, o);
+  // лёжа на спине (голова слева, лицом вверх), колени согнуты
+  const BACK = (o) => P({ p: [54, 87.4], t: -90, n: 12, lk: T(72, G), lb: T(71, G), ak: [90, 90], ab: [90, 91] }, o);
 
   const POSES = {
-    'jumping-jacks': { ms: 420, view: 'front', frames: [FRONT, P(FRONT, { h: [50, 13], n: [50, 23], p: [50, 49], ek: [40, 18], hk: [35, 6], eb: [60, 18], hb: [65, 6], kk: [41, 68], fk: [33, G], kb: [59, 68], fb: [67, G] })] },
-    'squats': { ms: 800, frames: [P(STAND, { ek: [60, 37], hk: [70, 37], eb: [58, 38], hb: [68, 38] }),
-      { h: [57, 31], n: [52, 39], p: [38, 62], ek: [63, 42], hk: [74, 41], eb: [61, 43], hb: [72, 42], kk: [56, 66], fk: [53, G], kb: [54, 67], fb: [50, G] }] },
-    'pushups': { ms: 750, look: -1, frames: [PLANK_UP, PLANK_DOWN] },
-    'lunges': { ms: 850, frames: [P(STAND, HIPS),
-      { h: [48, 32], n: [48, 41], p: [47, 66], ek: [56, 56], hk: [51, 66], eb: [40, 56], hb: [45, 66], kk: [64, 67], fk: [66, G], kb: [40, 85], fb: [27, 88] },
-      P(STAND, HIPS),
-      { h: [52, 32], n: [52, 41], p: [53, 66], ek: [60, 56], hk: [55, 66], eb: [44, 56], hb: [49, 66], kk: [60, 85], fk: [73, 88], kb: [36, 67], fb: [34, G] }] },
-    'plank': { ms: 1300, look: -1, frames: [
-      { h: [22, 62], n: [30, 68], p: [57, 77], ek: [30, 86], hk: [17, 87], eb: [33, 86], hb: [20, 87], kk: [72, 82], fk: [86, 88], kb: [72, 82], fb: [84, 88] },
-      { h: [22, 61], n: [30, 67], p: [57, 75], ek: [30, 86], hk: [17, 87], eb: [33, 86], hb: [20, 87], kk: [72, 81], fk: [86, 88], kb: [72, 81], fb: [84, 88] }] },
-    'glute-bridge': { ms: 900, frames: [LIE_BACK, P(LIE_BACK, { p: [52, 70], kk: [66, 66], kb: [65, 67] })] },
-    'mountain': { ms: 330, look: -1, frames: [
-      P(PLANK_UP, { kk: [46, 76], fk: [55, 84], kb: [71, 80], fb: [84, 88] }),
-      P(PLANK_UP, { kk: [71, 80], fk: [86, 88], kb: [47, 76], fb: [56, 84] })] },
-    'burpees': { ms: 520, frames: [
-      P(STAND, {}),
-      { h: [63, 54], n: [56, 58], p: [42, 68], ek: [60, 72], hk: [62, G], eb: [58, 72], hb: [59, G], kk: [56, 70], fk: [52, G], kb: [54, 71], fb: [49, G] },
-      mirror(PLANK_UP),
-      P(shiftY(STAND, -9), { ek: [55, 16], hk: [57, 4], eb: [46, 16], hb: [44, 4], fk: [53, 82], fb: [47, 82] })] },
+    'jumping-jacks': { ms: 420, view: 'front', vb: '0 -1 100 100', frames: [
+      { p: [50], on: 'lk', lk: [3, 1], lb: [3, 1], ak: [9, 4], ab: [9, 4] },
+      { p: [50], on: 'lk', lk: [17, 14], lb: [17, 14], ak: [160, 166], ab: [160, 166] }] },
+    'squats': { ms: 850, frames: [
+      P(STAND, { foot: ['lk', 50], t: 3, ak: [88, 90], ab: [86, 88] }),
+      { foot: ['lk', 50], t: 42, n: -30, lk: [80, -26], lb: [81, -25], ak: [86, 88], ab: [84, 86] }] },
+    'pushups': { ms: 800, look: -1, frames: [HIGH(80, 70), HIGH(80, 84, { n: -4 })] },
+    'lunges': { ms: 900, frames: [
+      P(STAND, HIPS, { p: [46], on: 'lk' }),
+      P(HIPS, { foot: ['lk', 64], t: 2, n: -2, lk: [88, 0], lb: T(28, 86) }),
+      P(STAND, HIPS, { p: [46], on: 'lk' }),
+      P(HIPS, { foot: ['lb', 64], t: 2, n: -2, lb: [88, 0], lk: T(28, 86) })] },
+    'plank': { ms: 1500, look: -1, frames: [
+      { foot: ['lk', 86, TOE], t: 81, n: -6, lk: R(0, 0), lb: R(0, 0), ak: [0, 90], ab: [2, 91] },
+      { foot: ['lk', 86, TOE], t: 80, n: -3, lk: R(0, 0), lb: R(0, 0), ak: [0, 90], ab: [2, 91] }] },
+    'glute-bridge': { ms: 950, frames: [
+      BACK({ ak: T(54, 90), ab: T(55, 90.5) }),
+      BACK({ p: [50.5, 74.5], t: -120.5, n: 42, ak: T(54, 90), ab: T(55, 90.5) })] },
+    'mountain': { ms: 340, look: -1, frames: [
+      HIGH(82, 70, { foot: null, p: [47, 71.8], lk: [66, -74], lb: T(82, TOE) }),
+      HIGH(82, 70, { foot: null, p: [47, 71.8], lb: [66, -74], lk: T(82, TOE) })] },
+    'burpees': { ms: 560, vb: '0 -4 102 102', frames: [
+      P(STAND, { foot: ['lk', 60] }),
+      { foot: ['lk', 62], t: 55, n: -30, lk: [95, -40], lb: [96, -40], ak: T(77, HAND), ab: T(79, HAND) },
+      { foot: ['lk', 22, TOE], t: 70, n: -8, lk: R(0, 0), lb: R(0, 0), ak: T(77, HAND), ab: T(79, HAND) },
+      { foot: ['lk', 62], t: 55, n: -30, lk: [95, -40], lb: [96, -40], ak: T(77, HAND), ab: T(79, HAND) },
+      { p: [60, 47], t: 0, n: -8, lk: [0, -6], lb: [2, -5], ak: [158, 162], ab: [155, 160] }] },
     'high-knees': { ms: 300, frames: [
-      P(STAND, { kk: [66, 52], fk: [64, 70], ek: [44, 40], hk: [50, 32], eb: [58, 42], hb: [56, 54] }),
-      P(STAND, { kb: [66, 52], fb: [64, 70], eb: [44, 40], hb: [50, 32], ek: [58, 42], hk: [56, 54] })] },
-    'crunches': { ms: 800, frames: [
-      P(LIE_BACK, CRUNCH_HANDS),
-      P(LIE_BACK, { h: [30, 66], n: [35, 74], ek: [33, 64], hk: [28, 69], eb: [35, 65], hb: [29, 70] })] },
-    'side-plank': { ms: 1200, look: -1, frames: [
-      { h: [23, 51], n: [30, 58], p: [56, 72], ek: [30, 86], hk: [42, 88], eb: [32, 45], hb: [33, 33], kk: [71, 80], fk: [86, 88], kb: [71, 80], fb: [86, 88] },
-      { h: [23, 52], n: [30, 59], p: [56, 75], ek: [30, 86], hk: [42, 88], eb: [32, 46], hb: [33, 34], kk: [71, 82], fk: [86, 88], kb: [71, 82], fb: [86, 88] }] },
-    'superman': { ms: 900, look: -1, frames: [
-      { h: [20, 81], n: [28, 85], p: [55, 86], ek: [17, 87], hk: [7, 87], eb: [18, 87], hb: [8, 87], kk: [71, 87], fk: [87, 87], kb: [71, 87], fb: [86, 87] },
-      { h: [20, 74], n: [28, 80], p: [55, 86], ek: [18, 76], hk: [8, 70], eb: [19, 77], hb: [9, 71], kk: [71, 83], fk: [87, 76], kb: [71, 83], fb: [86, 77] }] },
-    'wall-sit': { ms: 1300, prop: 'wall', frames: [
-      { h: [38, 31], n: [38, 40], p: [38, 64], ek: [47, 50], hk: [41, 53], eb: [45, 51], hb: [39, 54], kk: [61, 64], fk: [61, G], kb: [59, 65], fb: [59, G] },
-      { h: [38, 32], n: [38, 41], p: [38, 65], ek: [47, 51], hk: [41, 54], eb: [45, 52], hb: [39, 55], kk: [61, 65], fk: [61, G], kb: [59, 66], fb: [59, G] }] },
-    'tricep-dips': { ms: 850, prop: 'bench', frames: [
-      { h: [40, 32], n: [41, 42], p: [45, 66], ek: [38, 54], hk: [36, 66], eb: [40, 54], hb: [38, 66], kk: [63, 70], fk: [77, G], kb: [62, 71], fb: [75, G] },
-      { h: [42, 46], n: [43, 56], p: [47, 78], ek: [29, 58], hk: [36, 66], eb: [31, 58], hb: [38, 66], kk: [64, 74], fk: [77, G], kb: [63, 75], fb: [75, G] }] },
-    'leg-raises': { ms: 1000, toe: 'up', frames: [
-      P(LIE_BACK, { kk: [68, 86], fk: [84, 86], kb: [68, 87], fb: [83, 87] }),
-      P(LIE_BACK, { kk: [55, 70], fk: [58, 54], kb: [56, 71], fb: [59, 55] })] },
-    'jump-squats': { ms: 520, frames: [
-      { h: [57, 31], n: [52, 39], p: [38, 62], ek: [44, 52], hk: [36, 60], eb: [46, 53], hb: [38, 61], kk: [56, 66], fk: [53, G], kb: [54, 67], fb: [50, G] },
-      P(shiftY(STAND, -10), { ek: [55, 16], hk: [57, 5], eb: [46, 16], hb: [44, 5] })] },
-    'skater': { ms: 520, view: 'front', frames: [
-      { h: [35, 26], n: [38, 35], p: [43, 58], ek: [48, 42], hk: [56, 48], eb: [32, 44], hb: [26, 52], kk: [38, 73], fk: [36, G], kb: [50, 72], fb: [56, 85] },
-      { h: [65, 26], n: [62, 35], p: [57, 58], ek: [52, 42], hk: [44, 48], eb: [68, 44], hb: [74, 52], kk: [62, 73], fk: [64, G], kb: [50, 72], fb: [44, 85] }] },
-    'bird-dog': { ms: 1000, look: -1, frames: [QUAD, P(QUAD, { ek: [25, 60], hk: [12, 58], kk: [77, 62], fk: [92, 60] })] },
-    'cat-cow': { ms: 1300, look: -1, frames: [
-      P(QUAD, { s: [49, 46], h: [30, 74], n: [36, 66] }),
-      P(QUAD, { s: [49, 76], h: [27, 52], n: [36, 62] })] },
-    'child-pose': { ms: 1600, look: -1, frames: [
-      { h: [31, 83], n: [40, 79], s: [52, 74], p: [64, 80], ek: [25, 86], hk: [12, 87], eb: [27, 86], hb: [14, 87], kk: [55, 88], fk: [76, 88], kb: [57, 88], fb: [78, 88] },
-      { h: [31, 82], n: [40, 77], s: [52, 71], p: [64, 79], ek: [25, 86], hk: [12, 87], eb: [27, 86], hb: [14, 87], kk: [55, 88], fk: [76, 88], kb: [57, 88], fb: [78, 88] }] },
-    'hamstring-stretch': { ms: 1300, toe: 'up', frames: [
-      { h: [51, 53], n: [51, 62], p: [55, 86], ek: [60, 72], hk: [70, 80], eb: [59, 73], hb: [68, 81], kk: [72, 86], fk: [88, 86], kb: [66, 76], fb: [60, 87] },
-      { h: [69, 64], n: [63, 70], p: [55, 86], ek: [73, 76], hk: [84, 81], eb: [72, 77], hb: [82, 82], kk: [72, 86], fk: [88, 86], kb: [66, 76], fb: [60, 87] }] },
-    'hip-flexor': { ms: 1300, look: -1, frames: [
-      { h: [50, 39], n: [50, 48], p: [51, 72], ek: [44, 58], hk: [35, 66], eb: [46, 59], hb: [37, 67], kk: [33, 70], fk: [30, G], kb: [66, 88], fb: [84, 88] },
-      { h: [47, 43], n: [47, 52], p: [46, 76], ek: [41, 61], hk: [34, 68], eb: [43, 62], hb: [36, 69], kk: [31, 71], fk: [30, G], kb: [64, 88], fb: [84, 88] }] },
-    'chest-opener': { ms: 1300, frames: [
-      P(STAND, { ek: [45, 41], hk: [44, 55], eb: [46, 41], hb: [45, 55] }),
-      P(STAND, { h: [52, 17], n: [51, 27], ek: [41, 42], hk: [33, 53], eb: [42, 42], hb: [34, 53] })] },
-    'calf-raises': { ms: 700, frames: [P(STAND, HIPS), P(shiftY(STAND, -5), P(HIPS, { ek: [58, 39], hk: [53, 49], eb: [42, 39], hb: [47, 49] }))] },
+      { p: [50], on: 'lb', t: -2, n: 0, lb: [-6, -3], lk: [88, -2], ak: [-40, 35], ab: [45, 125] },
+      { p: [50], on: 'lk', t: -2, n: 0, lk: [-6, -3], lb: [88, -2], ab: [-40, 35], ak: [45, 125] }] },
+    'crunches': { ms: 850, frames: [
+      BACK({ ak: [100, 100], ab: [100, 101] }),
+      BACK({ t: -64, n: 22, ak: [100, 100], ab: [100, 101] })] },
+    'side-plank': { ms: 1500, view: 'front', frames: [
+      { foot: ['lk', 86, 86.5], t: -73, n: 0, lk: R(0, 0), lb: R(0, 0), ak: [73, 163], ab: [107, 107] },
+      { foot: ['lk', 86, 86.5], t: -76, n: 0, lk: R(0, 0), lb: R(0, 0), ak: [76, 166], ab: [104, 104] }] },
+    'superman': { ms: 1000, look: -1, vb: '0 4 102 102', frames: [
+      { p: [56, 87.6], t: 90, n: -4, lk: R(0, 0), lb: R(0, 1), ak: [90, 90], ab: [91, 91] },
+      { p: [56, 87.6], t: 80, n: -12, lk: [-102, -102], lb: [-101, -101], ak: [102, 102], ab: [103, 103] }] },
+    'wall-sit': { ms: 1500, prop: 'wall', frames: [
+      { foot: ['lk', 57], t: 0, n: 0, lk: [90, 0], lb: [91, 1], ak: [30, 88], ab: [28, 86] },
+      { foot: ['lk', 57], t: 1, n: 3, lk: [90, 0], lb: [91, 1], ak: [30, 88], ab: [28, 86] }] },
+    'tricep-dips': { ms: 900, prop: 'bench', frames: [
+      { p: [41, 67], t: 0, n: 0, lk: T(72, G), lb: T(70, G), ak: T(37, BENCH), ab: T(35, BENCH) },
+      { p: [43, 77], t: -4, n: 4, lk: T(72, G), lb: T(70, G), ak: T(37, BENCH), ab: T(35, BENCH) }] },
+    'leg-raises': { ms: 1100, toe: 'up', frames: [
+      BACK({ p: [46, 87.4], lk: [97, 97], lb: [96, 96] }),
+      BACK({ p: [46, 87.4], lk: [178, 178], lb: [177, 177] })] },
+    'jump-squats': { ms: 560, vb: '0 -6 104 104', frames: [
+      { foot: ['lk', 50], t: 40, n: -28, lk: [78, -24], lb: [79, -23], ak: [-35, -20], ab: [-33, -18] },
+      { p: [50, 46.5], t: 0, n: -6, lk: [0, -8], lb: [2, -6], ak: [160, 165], ab: [158, 163] }] },
+    'skater': { ms: 560, view: 'front', frames: [
+      { p: [42], on: 'lk', t: -10, n: 4, lk: [8, -6], lb: [-30, 40], ak: [35, 15], ab: [-15, -35] },
+      { p: [58], on: 'lb', t: 10, n: -4, lb: [8, -6], lk: [-30, 40], ab: [35, 15], ak: [-15, -35] }] },
+    'bird-dog': { ms: 1100, look: -1, vb: '-2 2 104 104', frames: [QUAD({ p: [56, 69.6] }), QUAD({ p: [56, 69.6], ak: [94, 94], lb: [-92, -92] })] },
+    'cat-cow': { ms: 1400, look: -1, frames: [QUAD({ c: 4.5, n: 28 }), QUAD({ c: -4, n: -32 })] },
+    'child-pose': { ms: 1700, look: -1, frames: [
+      { p: [62, 80], t: 100, n: 12, lk: [63, -90], lb: [64, -90], ak: [80, 88], ab: [81, 89] },
+      { p: [62, 79.4], t: 98, n: 10, lk: [63, -90], lb: [64, -90], ak: [80, 88], ab: [81, 89] }] },
+    'hamstring-stretch': { ms: 1400, toe: 'up', frames: [
+      { p: [28, 86.8], t: 4, n: 0, lk: [90, 90], lb: T(52, 88, 'up'), ak: [72, 82], ab: [70, 80] },
+      { p: [28, 86.8], t: 52, n: 16, lk: [90, 90], lb: T(52, 88, 'up'), ak: [96, 96], ab: [94, 95] }] },
+    'hip-flexor': { ms: 1400, look: -1, frames: [
+      { p: [54, 70.6], t: 0, n: 0, lk: T(35, G), lb: [-14, -90], ak: T(37, 68), ab: T(39, 69) },
+      { p: [50, 72.2], t: -5, n: -3, lk: T(35, G), lb: [-27, -90], ak: T(37, 68), ab: T(39, 69) }] },
+    'chest-opener': { ms: 1400, frames: [
+      P(STAND, { p: [50], on: 'lk', ak: [-12, -8], ab: [-10, -6] }),
+      P(STAND, { p: [50], on: 'lk', t: -4, n: -8, ak: [-42, -40], ab: [-40, -38] })] },
+    'calf-raises': { ms: 800, frames: [
+      P(STAND, HIPS, { p: [50], on: 'lk' }),
+      P(STAND, HIPS, { p: [50, 47.3] })] },
 
-    // ---------- новые упражнения ----------
-    'march': { ms: 520, frames: [
-      P(STAND, { kk: [60, 60], fk: [60, 78], ek: [46, 40], hk: [50, 50], eb: [55, 40], hb: [58, 50] }),
-      P(STAND, { kb: [60, 60], fb: [60, 78], eb: [46, 40], hb: [50, 50], ek: [55, 40], hk: [58, 50] })] },
+    'march': { ms: 560, frames: [
+      { p: [50], on: 'lb', t: 0, n: 0, lb: [-3, -2], lk: [58, -12], ak: [-28, 20], ab: [32, 95] },
+      { p: [50], on: 'lk', t: 0, n: 0, lk: [-3, -2], lb: [58, -12], ab: [-28, 20], ak: [32, 95] }] },
     'butt-kicks': { ms: 320, frames: [
-      P(STAND, { kk: [50, 71], fk: [37, 62], ek: [56, 40], hk: [62, 34], eb: [44, 41], hb: [40, 50] }),
-      P(STAND, { kb: [50, 71], fb: [37, 62], eb: [56, 40], hb: [62, 34], ek: [44, 41], hk: [40, 50] })] },
-    'sumo-squat': { ms: 900, view: 'front', frames: [
-      P(FRONT, { ek: [44, 40], hk: [49, 47], eb: [56, 40], hb: [51, 47], kk: [42, 70], fk: [36, G], kb: [58, 70], fb: [64, G] }),
-      P(FRONT, { h: [50, 31], n: [50, 41], p: [50, 64], ek: [43, 52], hk: [49, 58], eb: [57, 52], hb: [51, 58], kk: [35, 69], fk: [34, G], kb: [65, 69], fb: [66, G] })] },
-    'reverse-lunge': { ms: 900, frames: [P(STAND, HIPS),
-      { h: [53, 32], n: [53, 41], p: [52, 66], ek: [61, 56], hk: [56, 66], eb: [45, 56], hb: [50, 66], kk: [64, 70], fk: [62, G], kb: [42, 85], fb: [28, 88] }] },
-    'side-lunge': { ms: 950, view: 'front', frames: [
-      P(FRONT, { ek: [44, 40], hk: [49, 47], eb: [56, 40], hb: [51, 47] }),
-      { h: [41, 30], n: [42, 39], p: [40, 62], ek: [37, 50], hk: [43, 56], eb: [49, 50], hb: [45, 56], kk: [30, 72], fk: [30, G], kb: [56, 75], fb: [72, G] },
-      P(FRONT, { ek: [44, 40], hk: [49, 47], eb: [56, 40], hb: [51, 47] }),
-      { h: [59, 30], n: [58, 39], p: [60, 62], ek: [51, 50], hk: [55, 56], eb: [63, 50], hb: [57, 56], kk: [44, 75], fk: [28, G], kb: [70, 72], fb: [70, G] }] },
-    'step-ups': { ms: 800, prop: 'step', frames: [
-      P(STAND, { h: [44, 17], n: [44, 27], p: [44, 52], ek: [47, 40], hk: [49, 52], eb: [41, 40], hb: [39, 52], kk: [57, 63], fk: [62, 78], kb: [42, 70], fb: [41, G] }),
-      P(shift(STAND, 18, -11), { kb: [62, 64], fb: [58, 78] })] },
-    'single-leg-bridge': { ms: 900, frames: [
-      P(LIE_BACK, { kb: [66, 74], fb: [80, 66] }),
-      P(LIE_BACK, { p: [52, 72], kk: [66, 67], kb: [68, 62], fb: [83, 54] })] },
-    'donkey-kicks': { ms: 750, look: -1, frames: [QUAD, P(QUAD, { kk: [76, 56], fk: [79, 40] })] },
-    'incline-pushups': { ms: 800, look: -1, prop: 'bench', frames: [
-      { h: [28, 44], n: [34, 49], p: [58, 67], ek: [32, 58], hk: [30, 66], eb: [35, 58], hb: [33, 66], kk: [72, 78], fk: [86, 88], kb: [72, 78], fb: [84, 88] },
-      { h: [26, 55], n: [33, 59], p: [58, 73], ek: [42, 61], hk: [30, 66], eb: [45, 62], hb: [33, 66], kk: [72, 81], fk: [86, 88], kb: [72, 81], fb: [84, 88] }] },
-    'knee-pushups': { ms: 750, look: -1, frames: [
-      { h: [21, 53], n: [28, 58], p: [52, 70], ek: [28, 73], hk: [28, G], eb: [31, 73], hb: [31, G], kk: [66, 86], fk: [80, 78], kb: [67, 86], fb: [81, 79] },
-      { h: [23, 70], n: [30, 74], p: [53, 79], ek: [37, 77], hk: [28, G], eb: [40, 78], hb: [31, G], kk: [66, 86], fk: [80, 78], kb: [67, 86], fb: [81, 79] }] },
-    'pike-pushups': { ms: 850, look: -1, frames: [
-      { h: [34, 72], n: [37, 64], p: [57, 44], ek: [33, 76], hk: [30, G], eb: [35, 76], hb: [32, G], kk: [68, 66], fk: [80, G], kb: [69, 66], fb: [82, G] },
-      { h: [31, 82], n: [36, 74], p: [56, 50], ek: [42, 81], hk: [30, G], eb: [44, 81], hb: [32, G], kk: [68, 69], fk: [80, G], kb: [69, 69], fb: [82, G] }] },
-    'plank-shoulder-tap': { ms: 600, look: -1, frames: [
-      P(PLANK_UP, { ek: [36, 70], hk: [31, 60] }), PLANK_UP,
-      P(PLANK_UP, { eb: [37, 70], hb: [32, 60] }), PLANK_UP] },
-    'dead-bug': { ms: 1000, toe: 'up', frames: [
-      P(LIE_BACK, { ek: [27, 75], hk: [28, 63], eb: [29, 75], hb: [30, 63], kk: [53, 70], fk: [66, 70], kb: [54, 70], fb: [67, 70] }),
-      P(LIE_BACK, { ek: [16, 82], hk: [6, 85], eb: [29, 75], hb: [30, 63], kk: [53, 70], fk: [66, 70], kb: [69, 82], fb: [85, 84] })] },
-    'bicycle-crunch': { ms: 600, toe: 'up', frames: [
-      P(LIE_BACK, { h: [30, 67], n: [35, 75], ek: [42, 68], hk: [28, 70], eb: [33, 66], hb: [29, 71], kk: [46, 70], fk: [58, 74], kb: [68, 80], fb: [84, 78] }),
-      P(LIE_BACK, { h: [30, 67], n: [35, 75], ek: [33, 66], hk: [28, 70], eb: [42, 68], hb: [29, 71], kb: [46, 70], fb: [58, 74], kk: [68, 80], fk: [84, 78] })] },
-    'russian-twist': { ms: 700, frames: [
-      { h: [35, 56], n: [39, 65], p: [52, 86], ek: [44, 78], hk: [47, 86], eb: [46, 78], hb: [49, 86], kk: [64, 70], fk: [75, 82], kb: [65, 71], fb: [76, 83] },
-      { h: [36, 57], n: [40, 65], p: [52, 86], ek: [52, 74], hk: [62, 80], eb: [53, 75], hb: [63, 81], kk: [64, 70], fk: [75, 82], kb: [65, 71], fb: [76, 83] }] },
-    'flutter-kicks': { ms: 360, toe: 'up', frames: [
-      P(LIE_BACK, { kk: [68, 80], fk: [84, 74], kb: [68, 84], fb: [84, 84] }),
-      P(LIE_BACK, { kb: [68, 80], fb: [84, 74], kk: [68, 84], fk: [84, 84] })] },
-    'jump-rope': { ms: 330, view: 'front', frames: [
-      P(FRONT, { ek: [42, 44], hk: [36, 54], eb: [58, 44], hb: [64, 54] }),
-      P(shiftY(FRONT, -5), { ek: [42, 39], hk: [36, 49], eb: [58, 39], hb: [64, 49] })] },
-    'inchworm': { ms: 900, look: -1, frames: [
-      { h: [42, 78], n: [46, 70], p: [60, 50], ek: [42, 80], hk: [40, G], eb: [44, 80], hb: [42, G], kk: [60, 70], fk: [61, G], kb: [61, 70], fb: [63, G] },
-      { h: [30, 66], n: [35, 70], p: [62, 56], ek: [30, 80], hk: [27, G], eb: [32, 80], hb: [29, G], kk: [63, 72], fk: [66, G], kb: [64, 72], fb: [68, G] },
-      { h: [17, 53], n: [24, 58], p: [52, 72], ek: [24, 73], hk: [24, G], eb: [27, 73], hb: [27, G], kk: [67, 80], fk: [82, 88], kb: [68, 80], fb: [80, 88] },
-      { h: [30, 66], n: [35, 70], p: [62, 56], ek: [30, 80], hk: [27, G], eb: [32, 80], hb: [29, G], kk: [63, 72], fk: [66, G], kb: [64, 72], fb: [68, G] }] },
-    'cobra': { ms: 1400, look: -1, frames: [
-      { h: [20, 81], n: [28, 85], p: [55, 86], ek: [36, 82], hk: [30, G], eb: [37, 82], hb: [31, G], kk: [71, 87], fk: [87, 87], kb: [71, 87], fb: [86, 87] },
-      { h: [24, 60], n: [31, 67], s: [43, 80], p: [55, 86], ek: [30, 78], hk: [29, G], eb: [31, 78], hb: [30, G], kk: [71, 87], fk: [87, 87], kb: [71, 87], fb: [86, 87] }] },
-    'quad-stretch': { ms: 1500, frames: [
-      P(STAND, { kk: [52, 71], fk: [40, 58], ek: [46, 46], hk: [41, 57], eb: [57, 36], hb: [65, 31] }),
-      P(STAND, { kk: [53, 71], fk: [39, 56], ek: [46, 45], hk: [40, 55], eb: [57, 35], hb: [65, 30] })] },
-    'arm-circles': { ms: 260, view: 'front', frames: [
-      P(FRONT, { ek: [38, 28], hk: [27, 23], eb: [62, 28], hb: [73, 23] }),
-      P(FRONT, { ek: [38, 27], hk: [24, 27], eb: [62, 27], hb: [76, 27] }),
-      P(FRONT, { ek: [38, 28], hk: [27, 32], eb: [62, 28], hb: [73, 32] }),
-      P(FRONT, { ek: [38, 29], hk: [31, 27], eb: [62, 29], hb: [69, 27] })] },
-    'good-morning': { ms: 1000, frames: [
-      P(STAND, HEAD_HANDS),
-      { h: [74, 41], n: [66, 43], p: [45, 52], ek: [71, 35], hk: [74, 41], eb: [68, 36], hb: [72, 42], kk: [49, 70], fk: [50, G], kb: [46, 70], fb: [45, G] }] }
+      { p: [50], on: 'lb', t: 4, n: -2, lb: [-2, -4], lk: [-8, -158], ak: [35, 110], ab: [-35, 15] },
+      { p: [50], on: 'lk', t: 4, n: -2, lk: [-2, -4], lb: [-8, -158], ab: [35, 110], ak: [-35, 15] }] },
+    'sumo-squat': { ms: 950, view: 'front', frames: [
+      { p: [50], on: 'lk', lk: [14, 9], lb: [14, 9], ak: [14, -140], ab: [14, -140] },
+      { p: [50], on: 'lk', n: 0, lk: [62, 6], lb: [62, 6], ak: [18, -130], ab: [18, -130] }] },
+    'reverse-lunge': { ms: 950, frames: [
+      P(STAND, HIPS, { foot: ['lk', 60] }),
+      P(HIPS, { foot: ['lk', 60], t: 3, n: -2, lk: [86, 0], lb: T(20, 86) })] },
+    'side-lunge': { ms: 1000, view: 'front', frames: [
+      { p: [50], on: 'lk', lk: [4, 1], lb: [4, 1], ak: [14, -140], ab: [14, -140] },
+      { p: [44], on: 'lk', t: -4, lk: [36, 0], lb: [26, 26], ak: [14, -140], ab: [14, -140] },
+      { p: [50], on: 'lk', lk: [4, 1], lb: [4, 1], ak: [14, -140], ab: [14, -140] },
+      { p: [56], on: 'lb', t: 4, lb: [36, 0], lk: [26, 26], ak: [14, -140], ab: [14, -140] }] },
+    'step-ups': { ms: 900, prop: 'step', vb: '2 0 96 96', frames: [
+      P(STAND, { p: [44], on: 'lb', t: 7, lk: T(63, 78.4), ak: [30, 60], ab: [-25, 10] }),
+      P(STAND, { p: [63.4, 41.4], t: 2, lk: T(63, 78.4), lb: [25, -20], ak: [-20, 10], ab: [20, 45] })] },
+    'single-leg-bridge': { ms: 950, frames: [
+      BACK({ lb: [128, 128], ak: T(54, 90), ab: T(55, 90.5) }),
+      BACK({ p: [50.5, 74.5], t: -120.5, n: 42, lb: [112, 112], ak: T(54, 90), ab: T(55, 90.5) })] },
+    'donkey-kicks': { ms: 800, look: -1, frames: [QUAD(), QUAD({ lk: [-98, -182] })] },
+    'incline-pushups': { ms: 850, look: -1, prop: 'bench', frames: [
+      { foot: ['lk', 90, TOE], t: 52, n: -8, lk: R(0, 0), lb: R(0, 0), ak: T(29, BENCH), ab: T(31, BENCH) },
+      { foot: ['lk', 90, TOE], t: 63, n: -6, lk: R(0, 0), lb: R(0, 0), ak: T(29, BENCH), ab: T(31, BENCH) }] },
+    'knee-pushups': { ms: 800, look: -1, frames: [
+      { p: [44.9, 77.6], t: 54.4, n: -8, lk: [-54.4, -150], lb: [-54.4, -148], ak: T(25, HAND), ab: T(27.5, HAND) },
+      { p: [41.8, 84.7], t: 78.6, n: -4, lk: [-78.6, -150], lb: [-78.6, -148], ak: T(25, HAND), ab: T(27.5, HAND) }] },
+    'pike-pushups': { ms: 900, look: -1, frames: [
+      { p: [55, 53], t: 116, n: 10, lk: T(66, G), lb: T(68, G), ak: T(31, HAND), ab: T(33, HAND) },
+      { p: [56, 55], t: 135, n: 18, lk: T(66, G), lb: T(68, G), ak: T(31, HAND), ab: T(33, HAND) }] },
+    'plank-shoulder-tap': { ms: 650, look: -1, frames: [
+      HIGH(80, 70), HIGH(80, 70, { ak: T(26, 67, 'up') }), HIGH(80, 70), HIGH(80, 70, { ab: T(28, 67, 'up') })] },
+    'dead-bug': { ms: 1100, toe: 'up', frames: [
+      BACK({ ak: [180, 180], ab: [178, 178], lk: [180, 90], lb: [178, 92] }),
+      BACK({ ak: [-100, -100], ab: [178, 178], lk: [180, 90], lb: [95, 95] })] },
+    'bicycle-crunch': { ms: 650, toe: 'up', frames: [
+      BACK({ t: -68, n: 22, ak: T(22, 75, 'up'), ab: T(23, 76, 'up'), lk: [-150, 70], lb: [95, 95] }),
+      BACK({ t: -68, n: 22, ak: T(22, 75, 'up'), ab: T(23, 76, 'up'), lb: [-150, 70], lk: [95, 95] })] },
+    'russian-twist': { ms: 750, frames: [
+      { p: [50, 86.8], t: -35, n: 10, lk: T(70, 82, 'up'), lb: T(71, 83, 'up'), ak: T(60, 87), ab: T(62, 87.5) },
+      { p: [50, 86.8], t: -35, n: 10, lk: T(70, 82, 'up'), lb: T(71, 83, 'up'), ak: [72, 100], ab: [70, 98] }] },
+    'flutter-kicks': { ms: 380, toe: 'up', frames: [
+      BACK({ p: [46, 87.4], lk: [108, 108], lb: [96, 96] }),
+      BACK({ p: [46, 87.4], lk: [96, 96], lb: [108, 108] })] },
+    'jump-rope': { ms: 340, view: 'front', frames: [
+      { p: [50], on: 'lk', lk: [3, 0], lb: [3, 0], ak: [14, 55], ab: [14, 55] },
+      { p: [50, 47.5], lk: [3, -2], lb: [3, -2], ak: [14, 62], ab: [14, 62] }] },
+    'inchworm': { ms: 950, look: -1, frames: [
+      { foot: ['lk', 80], t: 160, n: 10, lk: [0, 0], lb: [1, 1], ak: T(68, HAND), ab: T(70, HAND) },
+      { p: [76, 56], t: 128, n: 4, lk: T(80, G), lb: T(81, G), ak: T(46, HAND), ab: T(48, HAND) },
+      HIGH(80, 70),
+      { p: [76, 56], t: 128, n: 4, lk: T(80, G), lb: T(81, G), ak: T(46, HAND), ab: T(48, HAND) }] },
+    'cobra': { ms: 1500, look: -1, frames: [
+      { p: [58, 87.6], t: 90, n: -4, lk: [-90, -90], lb: [-90, -89], ak: T(33, HAND, 'up'), ab: T(35, HAND, 'up') },
+      { p: [58, 87.6], t: 50, n: -16, c: -4, lk: [-90, -90], lb: [-90, -89], ak: T(36, HAND, 'up'), ab: T(38, HAND, 'up') }] },
+    'quad-stretch': { ms: 1600, frames: [
+      { p: [50], on: 'lb', t: 2, n: 0, lb: [0, 0], lk: [-6, -170], ak: T(44, 55), ab: [80, 85] },
+      { p: [50], on: 'lb', t: 3, n: 0, lb: [0, 0], lk: [-11, -172], ak: T(43, 54), ab: [82, 87] }] },
+    'arm-circles': { ms: 280, view: 'front', frames: [
+      { p: [50], on: 'lk', lk: [4, 1], lb: [4, 1], ak: [82, 82], ab: [82, 82] },
+      { p: [50], on: 'lk', lk: [4, 1], lb: [4, 1], ak: [90, 100], ab: [90, 100] },
+      { p: [50], on: 'lk', lk: [4, 1], lb: [4, 1], ak: [98, 98], ab: [98, 98] },
+      { p: [50], on: 'lk', lk: [4, 1], lb: [4, 1], ak: [90, 80], ab: [90, 80] }] },
+    'good-morning': { ms: 1100, frames: [
+      { foot: ['lk', 52], t: 0, n: 0, lk: [5, -3], lb: [6, -2], ak: R(150, 290), ab: R(148, 288) },
+      { foot: ['lk', 52], t: 78, n: -20, lk: [16, -4], lb: [17, -3], ak: R(150, 290), ab: R(148, 288) }] }
   };
 
-  // ---------- рисование ----------
-  const COL = { skin: '#f1c19c', skinB: '#d69f7a', shirt: '#0179da', shirtB: '#085aa6', shorts: '#23324f', shortsB: '#17223a', shoe: '#c6dc3e', shoeB: '#9aae2c', hair: '#3a2a20', eye: '#1b1b1f' };
-  const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  // =========================================================
+  //  Скелет
+  // =========================================================
+  const LIMBS = { ak: ['up', 'fore', 'arm'], ab: ['up', 'fore', 'arm'], lk: ['thigh', 'shin', 'leg'], lb: ['thigh', 'shin', 'leg'] };
+  const RAD = Math.PI / 180;
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1]], sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+  const mul = (a, k) => [a[0] * k, a[1] * k], len = a => Math.hypot(a[0], a[1]);
+  const norm = v => { const l = len(v) || 1; return [v[0] / l, v[1] / l]; };
+  const dot2 = (a, b) => a[0] * b[0] + a[1] * b[1];
   const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-  function blend(A, B, t) {
-    const o = {};
-    for (const k in A) o[k] = B[k] ? lerp(A[k], B[k], t) : A[k];
-    for (const k in B) if (!A[k]) o[k] = B[k];
+  const lerpA = (a, b, t) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return a + d * t; };
+
+  // оси тела: u — от таза к плечам, fw — куда смотрит грудь, sd — сторона ближних (k) рук и ног (вид спереди)
+  function axes(t, look, front) {
+    if (front) { const u = [Math.sin(t), -Math.cos(t)]; return { u, d: mul(u, -1), fw: [0, 0], sd: [u[1], -u[0]] }; }
+    const u = [look * Math.sin(t), -Math.cos(t)];
+    return { u, d: mul(u, -1), fw: [look * Math.cos(t), Math.sin(t)] };
+  }
+  const outOf = (A, k) => k[1] === 'k' ? A.sd : mul(A.sd, -1);
+  function bases(p, A, front) {
+    const n = add(p, mul(A.u, L.torso));
+    if (!front) return { n, ak: n, ab: n, lk: p, lb: p };
+    return { n, ak: add(n, mul(A.sd, SH)), ab: add(n, mul(A.sd, -SH)), lk: add(p, mul(A.sd, HP)), lb: add(p, mul(A.sd, -HP)) };
+  }
+  // направление кости по углу относительно корпуса
+  const vec = (A, k, a, front) => add(mul(A.d, Math.cos(a)), mul(front ? outOf(A, k) : A.fw, Math.sin(a)));
+  const angOf = (A, k, v, front) => Math.atan2(dot2(v, front ? outOf(A, k) : A.fw), dot2(v, A.d));
+  // две кости от B к цели T; сгиб — в сторону pref (колени вперёд, локти назад)
+  function ik(B, T, l1, l2, pref) {
+    const v = sub(T, B), a0 = Math.atan2(v[1], v[0]);
+    const d = Math.max(Math.abs(l1 - l2) + 0.05, Math.min(l1 + l2 - 0.02, len(v)));
+    const c = Math.acos(Math.max(-1, Math.min(1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d))));
+    const e = add(B, mul([Math.cos(a0), Math.sin(a0)], d)), mid = lerp(B, e, 0.5);
+    const m1 = add(B, mul([Math.cos(a0 + c), Math.sin(a0 + c)], l1)), m2 = add(B, mul([Math.cos(a0 - c), Math.sin(a0 - c)], l1));
+    return { m: dot2(sub(m1, mid), pref) >= dot2(sub(m2, mid), pref) ? m1 : m2, e };
+  }
+  function prefOf(A, k, bend, front) {
+    const kind = LIMBS[k][2];
+    let p = front ? outOf(A, k) : (kind === 'leg' ? A.fw : mul(A.fw, -1));
+    if (bend === 'up') p = [0, -1]; else if (bend === 'down') p = [0, 1];
+    else if (bend === 'fw') p = A.fw; else if (bend === 'back') p = mul(A.fw, -1); else if (bend === -1) p = mul(p, -1);
+    return p;
+  }
+  // опора под кистью/стопой: пол, край стула, ступенька
+  const onSupport = (pt, meta) => pt[1] >= G - 1 || (meta.prop === 'bench' && Math.abs(pt[1] - BENCH) < 1.5) || (meta.prop === 'step' && Math.abs(pt[1] - 78.4) < 1.5);
+
+  // ключевая поза -> параметры скелета (углы в радианах относительно корпуса)
+  function resolve(F, meta) {
+    const front = meta.view === 'front', look = meta.look || 1;
+    const t = (F.t || 0) * RAD, A = axes(t, look, front);
+    const limbs = {};
+    for (const k in LIMBS) {
+      const s = F[k] || [0, 0];
+      if (Array.isArray(s)) limbs[k] = { a1: s[0] * RAD + (front ? 0 : t), a2: s[1] * RAD + (front ? 0 : t) };
+      else if (s.r) limbs[k] = { a1: s.r[0] * RAD, a2: s.r[1] * RAD };
+      else limbs[k] = { to: s.to, bend: s.bend };
+    }
+    const endFrom = (p, k) => { const B = bases(p, A, front)[k], x = limbs[k], [l1, l2] = LIMBS[k];
+      return add(add(B, mul(vec(A, k, x.a1, front), L[l1])), mul(vec(A, k, x.a2, front), L[l2])); };
+    let p, anchor = null;
+    if (F.foot) { const [k, x, y] = F.foot, e = endFrom([0, 0], k); p = sub([x, y == null ? G : y], e); anchor = { k, pt: [x, y == null ? G : y] }; }
+    else if (F.p && F.p[1] == null) { const on = Array.isArray(F.on) ? F.on : [F.on || 'lk', G]; p = [F.p[0], on[1] - endFrom([F.p[0], 0], on[0])[1]]; }
+    else p = F.p.slice();
+    const B = bases(p, A, front);
+    for (const k in limbs) {
+      const x = limbs[k]; if (!x.to) continue;
+      const [l1, l2] = LIMBS[k], j = ik(B[k], x.to, L[l1], L[l2], prefOf(A, k, x.bend, front));
+      x.a1 = angOf(A, k, sub(j.m, B[k]), front); x.a2 = angOf(A, k, sub(j.e, j.m), front);
+      x.pl = onSupport(x.to, meta);
+    }
+    return { p, t, n: (F.n || 0) * RAD, c: F.c || 0, anchor, limbs };
+  }
+  function mix(X, Y, s) {
+    const o = { p: lerp(X.p, Y.p, s), t: lerpA(X.t, Y.t, s), n: lerpA(X.n, Y.n, s), c: X.c + (Y.c - X.c) * s, limbs: {}, anchor: null };
+    if (X.anchor && Y.anchor && X.anchor.k === Y.anchor.k) o.anchor = { k: X.anchor.k, pt: lerp(X.anchor.pt, Y.anchor.pt, s) };
+    for (const k in X.limbs) {
+      const a = X.limbs[k], b = Y.limbs[k];
+      const keep = a.to && b.to && len(sub(a.to, b.to)) < 3;
+      o.limbs[k] = { a1: lerpA(a.a1, b.a1, s), a2: lerpA(a.a2, b.a2, s), to: keep ? lerp(a.to, b.to, s) : null, bend: a.bend, pl: keep ? a.pl : (s < 0.5 ? a.pl : b.pl) };
+    }
     return o;
   }
-  const f1 = v => v.toFixed(1);
-  const seg = (a, b, w, c) => `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(b[0])}" y2="${f1(b[1])}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`;
-  const dot = (a, r, c) => `<circle cx="${f1(a[0])}" cy="${f1(a[1])}" r="${r}" fill="${c}"/>`;
-  const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
-
-  function leg(p, k, f, far, meta, front) {
-    const sk = far ? COL.skinB : COL.skin, sh = far ? COL.shortsB : COL.shorts, so = far ? COL.shoeB : COL.shoe;
-    const mid = lerp(p, k, 0.58);
-    // носок: перпендикулярно голени — вперёд (стоя), вниз (в упоре) или вверх (сидя с прямыми ногами)
-    const v = norm([f[0] - k[0], f[1] - k[1]]);
-    let t = [-v[1], v[0]];
-    if (Math.abs(v[1]) > 0.72) { const want = meta.view === 'front' ? (f[0] < 50 ? -1 : 1) : (meta.look || 1); if (Math.sign(t[0]) !== want) t = [-t[0], -t[1]]; }
-    else { const up = meta.toe === 'up'; if ((t[1] > 0) === up) t = [-t[0], -t[1]]; }
-    if (meta.view === 'front') t = [t[0] * 0.55, t[1] * 0.55];
-    const toe = [f[0] + t[0] * 6, f[1] + t[1] * 6];
-    return seg(p, mid, 10.5, sh) + seg(mid, k, 8.2, sk) + seg(k, f, 7, sk) + seg(f, toe, 6, so) + (front ? '' : '');
-  }
-  function arm(n, e, h, far) {
-    const sk = far ? COL.skinB : COL.skin, sl = far ? COL.shirtB : COL.shirt;
-    return seg(e, h, 5.4, sk) + seg(lerp(n, e, 0.45), e, 6.2, sk) + seg(n, lerp(n, e, 0.5), 7.4, sl) + dot(h, 3.1, sk);
-  }
-  function draw(p, meta) {
-    const front = meta.view === 'front';
-    // направление «вперёд» (куда смотрит лицо) — перпендикуляр к корпусу
-    const up = norm([p.n[0] - p.p[0], p.n[1] - p.p[1]]);
-    const look = meta.look || 1;
-    let fw = [-up[1] * look, up[0] * look];
-    if (look < 0) fw = [up[1], -up[0]];
-    const torso = p.s
-      ? `<path d="M${f1(p.n[0])} ${f1(p.n[1])} Q${f1(p.s[0])} ${f1(p.s[1])} ${f1(p.p[0])} ${f1(p.p[1])}" fill="none" stroke="${COL.shirt}" stroke-width="14.5" stroke-linecap="round"/>`
-      : seg(p.n, p.p, 14.5, COL.shirt);
-    // голова: волосы сзади-сверху, лицо, глаза
-    const hc = p.h;
-    let head;
-    if (front) {
-      head = dot([hc[0], hc[1] - 1.4], 7.1, COL.hair) + dot([hc[0], hc[1] + 0.8], 6.2, COL.skin)
-        + dot([hc[0] - 2.3, hc[1] + 0.6], 0.95, COL.eye) + dot([hc[0] + 2.3, hc[1] + 0.6], 0.95, COL.eye);
-    } else {
-      const back = [hc[0] - fw[0] * 1.5 + up[0] * 1.1, hc[1] - fw[1] * 1.5 + up[1] * 1.1];
-      const face = [hc[0] + fw[0] * 0.8 - up[0] * 0.3, hc[1] + fw[1] * 0.8 - up[1] * 0.3];
-      head = dot(back, 7, COL.hair) + dot(face, 6.2, COL.skin) + dot([face[0] + fw[0] * 3 + up[0] * 0.8, face[1] + fw[1] * 3 + up[1] * 0.8], 0.95, COL.eye);
+  // параметры -> точки суставов
+  function joints(S, meta) {
+    const front = meta.view === 'front', look = meta.look || 1, A = axes(S.t, look, front);
+    const fk = (B, k, x) => { const [l1, l2] = LIMBS[k], m = add(B, mul(vec(A, k, x.a1, front), L[l1])); return { m, e: add(m, mul(vec(A, k, x.a2, front), L[l2])) }; };
+    let p = S.p;
+    if (S.anchor) p = sub(S.anchor.pt, fk(bases([0, 0], A, front)[S.anchor.k], S.anchor.k, S.limbs[S.anchor.k]).e);
+    const B = bases(p, A, front), limbs = {};
+    for (const k in LIMBS) {
+      const x = S.limbs[k], [l1, l2] = LIMBS[k];
+      const j = x.to ? ik(B[k], x.to, L[l1], L[l2], prefOf(A, k, x.bend, front)) : fk(B[k], k, x);
+      limbs[k] = { b: B[k], m: j.m, e: j.e, pl: !!x.pl || j.e[1] >= G - 0.8 };
     }
-    const neck = seg(p.n, lerp(p.n, p.h, 0.55), 5.2, COL.skin);
-    // тень на полу
-    const xs = [p.fk[0], p.fb[0], p.hk[0], p.hb[0], p.p[0]], cx = (Math.min(...xs) + Math.max(...xs)) / 2, w = Math.max(14, (Math.max(...xs) - Math.min(...xs)) / 2 + 6);
-    const prop = meta.prop === 'wall' ? '<rect x="27" y="18" width="6" height="72" rx="2" class="jf-prop"/>'
-      : meta.prop === 'bench' ? '<rect x="12" y="65" width="28" height="5" rx="2.5" class="jf-prop"/><rect x="15" y="68" width="4" height="22" rx="1" class="jf-prop"/><rect x="33" y="68" width="4" height="22" rx="1" class="jf-prop"/>'
-      : meta.prop === 'step' ? '<rect x="52" y="80" width="36" height="11" rx="3" class="jf-prop"/>' : '';
-    return `${prop}<ellipse cx="${f1(cx)}" cy="${G + 3.2}" rx="${f1(w)}" ry="2.6" class="jf-shadow"/>
-      ${arm(p.n, p.eb, p.hb, true)}${leg(p.p, p.kb, p.fb, true, meta)}
-      ${neck}${torso}${dot(p.p, 6.4, COL.shorts)}
-      ${leg(p.p, p.kk, p.fk, false, meta)}${head}${arm(p.n, p.ek, p.hk, false)}`;
+    // ничего не проваливается под пол
+    let pen = 0;
+    for (const k in limbs) pen = Math.max(pen, limbs[k].e[1] - (k[0] === 'l' ? G + 0.4 : HAND + 0.6), limbs[k].m[1] - (G + 0.5));
+    const dy = pen > 0 ? -pen : 0;
+    const sh = q => [q[0], q[1] + dy];
+    for (const k in limbs) { const o = limbs[k]; o.b = sh(o.b); o.m = sh(o.m); o.e = sh(o.e); }
+    const n = sh(B.n), hu = norm(add(mul(A.u, Math.cos(S.n)), mul(front ? [0, 0] : A.fw, Math.sin(S.n))));
+    const hf = front ? [0, 0] : (look < 0 ? [hu[1], -hu[0]] : [-hu[1], hu[0]]);
+    return { p: sh(p), n, A, front, look, limbs, bend: mul(front ? A.sd : A.fw, -S.c), hu, hf,
+      neckTop: add(n, mul(hu, L.neck)), hc: add(n, mul(hu, L.neck + L.head)) };
   }
-  const svg = (inner, cls) => `<svg class="jf-anim ${cls || ''}" viewBox="4 6 92 92" aria-hidden="true">${inner}</svg>`;
 
+  // =========================================================
+  //  Рисование
+  // =========================================================
+  const COL = { skin: '#f0bf98', skinB: '#d8a27c', skinD: '#b97f5a', shirt: '#0a7fdc', shirtB: '#0866b8', shorts: '#24324f', shortsB: '#1a2540', shoe: '#c6dc3e', shoeB: '#a5b92e', sole: '#f4f7ea', hair: '#33241b', eye: '#1b1b1f' };
+  const f1 = v => (Math.round(v * 10) / 10).toString();
+  const P2 = a => f1(a[0]) + ' ' + f1(a[1]);
+  // сужающаяся «капсула» — мышца между двумя суставами
+  function cap(a, b, ra, rb, fill) {
+    const d = sub(b, a), l = len(d) || 0.01, u = [d[0] / l, d[1] / l], n = [-u[1], u[0]];
+    return ['path', { d: `M${P2(add(a, mul(n, ra)))}L${P2(add(b, mul(n, rb)))}A${f1(rb)} ${f1(rb)} 0 0 0 ${P2(sub(b, mul(n, rb)))}L${P2(sub(a, mul(n, ra)))}A${f1(ra)} ${f1(ra)} 0 0 0 ${P2(add(a, mul(n, ra)))}Z`, fill }];
+  }
+  // плавный замкнутый контур (корпус, шорты)
+  function blob(pts, fill) {
+    const n = pts.length; let d = `M${P2(pts[0])}`;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      d += `C${P2(add(p1, mul(sub(p2, p0), 1 / 6)))} ${P2(sub(p2, mul(sub(p3, p1), 1 / 6)))} ${P2(p2)}`;
+    }
+    return ['path', { d: d + 'Z', fill }];
+  }
+  const circ = (c, r, fill) => ['circle', { cx: f1(c[0]), cy: f1(c[1]), r: f1(r), fill }];
+
+  function leg(J, k, far, meta) {
+    const o = J.limbs[k], hip = o.b, knee = o.m, ank = o.e;
+    const sk = far ? COL.skinB : COL.skin, sh = far ? COL.shortsB : COL.shorts, so = far ? COL.shoeB : COL.shoe;
+    const v = norm(sub(ank, knee)), fwd = J.front ? outOf(J.A, k) : [J.look, 0];
+    const perp = want => { const t1 = [-v[1], v[0]]; return dot2(t1, want) >= 0 ? t1 : mul(t1, -1); };
+    let toe;
+    if (J.front) toe = Math.abs(v[1]) > 0.5 ? fwd : [0, -1];
+    else if (o.pl && Math.abs(v[1]) > 0.55) toe = fwd;                                          // стоит на полу — стопа ровно
+    else if (meta.toe === 'up') toe = perp([0, -1]);                                            // лёжа/сидя с прямыми ногами — носки на себя
+    else if (ank[1] >= G - 2.5 && Math.abs(v[1]) < 0.5) toe = v;                                 // голень на полу — стопа вытянута назад
+    else if (v[1] < -0.3) toe = v;                                                               // голень вверх (захлёст, мах назад) — носок тянется
+    else if (ank[1] > G - 8 && Math.abs(v[1]) > 0.55) {                                          // на носочках
+      const ty = Math.max(0, Math.min(0.95, (G + 0.9 - ank[1]) / 6.6)); toe = [fwd[0] * Math.sqrt(1 - ty * ty), ty];
+    } else if (ank[1] > G - 8) toe = norm(add(perp([0, 1]), mul(fwd, 0.55)));                    // у пола (упор, выпад) — на подушечках
+    else toe = perp(J.A.fw);
+    toe = norm(toe);
+    const fl = J.front ? 3.4 : 6.6, heel = sub(ank, mul(toe, J.front ? 1.2 : 2)), tip = add(ank, mul(toe, fl));
+    const calf = J.front ? [0, 0] : mul(toe, -0.8), down = mul(norm(sub(ank, knee)), 1.6);
+    return [
+      cap(hip, knee, 5.4, 3.7, sk),
+      cap(knee, ank, 3.5, 2.1, sk),
+      cap(add(lerp(knee, ank, 0.1), calf), add(lerp(knee, ank, 0.55), mul(calf, 0.4)), 3.6, 2.5, sk),
+      cap(hip, lerp(hip, knee, 0.5), 6.1, 5, sh),
+      cap(heel, tip, 2.7, 2.1, so),
+      cap(add(heel, down), add(tip, mul(down, 0.9)), 1.05, 0.85, COL.sole)
+    ];
+  }
+  function arm(J, k, far) {
+    const o = J.limbs[k], sh = o.b, el = o.m, wr = o.e;
+    const sk = far ? COL.skinB : COL.skin, sl = far ? COL.shirtB : COL.shirt;
+    let hd = norm(sub(wr, el));
+    if (o.pl && !J.front) hd = [J.look, 0];                                    // ладонь лежит на опоре
+    return [
+      cap(sh, el, 3.4, 2.5, sk),
+      cap(el, wr, 2.5, 1.8, sk),
+      cap(sh, lerp(sh, el, 0.45), 4.2, 3.6, sl),
+      cap(wr, add(wr, mul(hd, 3.1)), 2.05, 1.7, far ? COL.skinD : COL.skinB)
+    ];
+  }
+  // корпус: точки (вдоль позвоночника, поперёк) -> экран, с изгибом спины
+  function body(J, pts) {
+    const ax = J.front ? J.A.sd : J.A.fw;
+    return pts.map(([a, f]) => add(add(add(J.p, mul(J.A.u, a)), mul(ax, f)), mul(J.bend, Math.sin(Math.PI * Math.max(0, Math.min(1, a / L.torso))))));
+  }
+  const SHIRT_SIDE = [[25, -3.2], [21, -4.5], [12, -3.7], [4, -4.6], [3.2, 4.3], [10, 3.7], [17, 5.2], [22.5, 4.1], [25.2, 1.4]];
+  const SHORTS_SIDE = [[5.5, -4.9], [5.5, 4.4], [-1.6, 5.1], [-5.2, 2.2], [-5, -3.4], [-1.8, -6.4]];
+  const SHIRT_FRONT = [[25.4, -3.6], [24.4, -7.8], [19, -7], [11, -5.4], [4, -6.4], [4, 6.4], [11, 5.4], [19, 7], [24.4, 7.8], [25.4, 3.6]];
+  const SHORTS_FRONT = [[5.5, -6.3], [5.5, 6.3], [-1.5, 7.3], [-6.4, 6.8], [-5.2, 0.9], [-5.2, -0.9], [-6.4, -6.8], [-1.5, -7.3]];
+
+  function head(J) {
+    const c = J.hc, hu = J.hu, side = J.front ? J.A.sd : J.hf;
+    const at = (a, f) => add(add(c, mul(hu, a)), mul(side, f));
+    const neck = cap(add(J.n, mul(hu, -1.5)), J.neckTop, 2.6, 2.3, COL.skinB);
+    if (J.front) return [neck,
+      circ(at(0.9, 0), 5.5, COL.hair), circ(at(-0.7, 4.9), 1.3, COL.skinB), circ(at(-0.7, -4.9), 1.3, COL.skinB),
+      circ(at(-0.4, 0), 4.9, COL.skin), circ(at(-2.4, 0), 3.4, COL.skin), circ(at(4.2, 0), 2.6, COL.hair),
+      circ(at(0.2, 1.9), 0.75, COL.eye), circ(at(0.2, -1.9), 0.75, COL.eye),
+      ['path', { d: `M${P2(at(-2.7, -1.3))}Q${P2(at(-3.5, 0))} ${P2(at(-2.7, 1.3))}`, fill: 'none', stroke: COL.skinD, 'stroke-width': '0.6', 'stroke-linecap': 'round' }]];
+    return [neck,
+      circ(at(0.7, -0.9), 5.3, COL.hair),
+      circ(at(-0.3, 0.6), 4.8, COL.skin), circ(at(-2.7, 2.2), 2.7, COL.skin), circ(at(-0.4, 4.9), 1.05, COL.skin),
+      circ(at(3.2, 1.6), 3.1, COL.hair), circ(at(-0.4, -0.7), 1.3, COL.skinB), circ(at(0.6, 3), 0.75, COL.eye),
+      ['path', { d: `M${P2(at(-2.4, 2.4))}Q${P2(at(-3, 3.3))} ${P2(at(-2.5, 4))}`, fill: 'none', stroke: COL.skinD, 'stroke-width': '0.55', 'stroke-linecap': 'round' }]];
+  }
+  const PROPS = {
+    wall: [['rect', { x: 27, y: 14, width: 6, height: 78, rx: 2, class: 'jf-prop' }]],
+    bench: [['rect', { x: 12, y: 70, width: 28, height: 5, rx: 2.5, class: 'jf-prop' }], ['rect', { x: 15, y: 73, width: 4, height: 19, rx: 1, class: 'jf-prop' }], ['rect', { x: 33, y: 73, width: 4, height: 19, rx: 1, class: 'jf-prop' }]],
+    step: [['rect', { x: 52, y: 80.6, width: 36, height: 11.4, rx: 3, class: 'jf-prop' }]]
+  };
+  function shapes(J, meta) {
+    const xs = ['lk', 'lb', 'ak', 'ab'].map(k => J.limbs[k].e[0]).concat([J.p[0], J.hc[0], J.n[0]]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, w = Math.max(13, (Math.max(...xs) - Math.min(...xs)) / 2 + 5);
+    const out = (PROPS[meta.prop] || []).slice();
+    out.push(['ellipse', { cx: f1(cx), cy: f1(G + 3.4), rx: f1(w), ry: '2.4', class: 'jf-shadow' }]);
+    const shirt = blob(body(J, J.front ? SHIRT_FRONT : SHIRT_SIDE), COL.shirt);
+    const shorts = blob(body(J, J.front ? SHORTS_FRONT : SHORTS_SIDE), COL.shorts);
+    if (J.front) {
+      const up = J.limbs.lb.e[1] - J.limbs.lk.e[1];                     // какая нога поднята — та дальше от нас
+      const legs = up < -2 ? [leg(J, 'lb', false, meta), leg(J, 'lk', true, meta)] : up > 2 ? [leg(J, 'lk', true, meta), leg(J, 'lb', false, meta)] : [leg(J, 'lk', false, meta), leg(J, 'lb', false, meta)];
+      out.push(...legs[0], ...legs[1], ...head(J), shirt, shorts, ...arm(J, 'ak', false), ...arm(J, 'ab', false));
+    }
+    else out.push(...arm(J, 'ab', true), ...leg(J, 'lb', true, meta), ...head(J), shirt, shorts, ...leg(J, 'lk', false, meta), ...arm(J, 'ak', false));
+    return out;
+  }
+  const attrs = a => Object.keys(a).map(k => `${k}="${a[k]}"`).join(' ');
+  const toStr = list => list.map(([t, a]) => `<${t} ${attrs(a)}/>`).join('');
+  const svg = (inner, cls, vb) => `<svg class="jf-anim ${cls || ''}" viewBox="${vb || '4 6 92 92'}" aria-hidden="true">${inner}</svg>`;
+
+  const cache = {};
+  const keys = id => cache[id] || (cache[id] = POSES[id].frames.map(F => resolve(F, POSES[id])));
+  // плавность: у двух поз — мягкий разворот в крайних точках; у серии поз — без остановок в каждой
+  const easeK = (x, k) => x - k * Math.sin(2 * Math.PI * x) / (2 * Math.PI);
+  function poseAt(id, ms) {
+    const a = POSES[id], K = keys(id), n = K.length;
+    const x = ms / a.ms, i = Math.floor(x) % n;
+    return joints(mix(K[i], K[(i + 1) % n], easeK(x % 1, n > 2 ? 0.6 : 1)), a);
+  }
   // Статичная картинка — для списков
   function still(id, cls) {
     const a = POSES[id]; if (!a) return '';
-    return svg(draw(a.frames[a.frames.length > 2 ? 1 : a.frames.length - 1], a), cls);
+    const K = keys(id);
+    return svg(toStr(shapes(joints(K[K.length > 2 ? 1 : K.length - 1], a), a)), cls, a.vb);
   }
-  // Живая анимация внутри el. Останавливается сама, когда el убирают со страницы.
+  // Живая анимация внутри el. Элементы создаются один раз, дальше меняются только координаты.
   function play(el, id) {
     const a = POSES[id]; if (!el || !a) return () => {};
     const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.innerHTML = svg('', 'live');
-    const s = el.firstElementChild;
-    const n = a.frames.length;
-    const seq = a.frames.map((_, i) => i);
-    let raf, start = performance.now(), stopped = false;
+    if (reduce) { el.innerHTML = still(id, 'live'); return () => {}; }
+    el.innerHTML = svg('', 'live', a.vb);
+    const s = el.firstElementChild, NS = 'http://www.w3.org/2000/svg';
+    let nodes = null, raf, stopped = false;
+    const start = performance.now();
     function frame(now) {
       if (stopped || !el.isConnected) return;
-      const total = Math.max(0, now - start) / a.ms;
-      const i = Math.floor(total) % seq.length, t = ease(total % 1);
-      const A = a.frames[seq[i]], B = a.frames[seq[(i + 1) % seq.length]];
-      s.innerHTML = draw(blend(A, B, t), a);
+      const list = shapes(poseAt(id, Math.max(0, now - start)), a);
+      if (!nodes || nodes.length !== list.length) { s.textContent = ''; nodes = list.map(([t]) => s.appendChild(document.createElementNS(NS, t))); }
+      for (let i = 0; i < list.length; i++) { const at = list[i][1], nd = nodes[i]; for (const k in at) if (nd.getAttribute(k) !== String(at[k])) nd.setAttribute(k, at[k]); }
       raf = requestAnimationFrame(frame);
     }
-    if (reduce) s.innerHTML = draw(a.frames[n > 2 ? 1 : n - 1], a);
-    else raf = requestAnimationFrame(frame);
+    raf = requestAnimationFrame(frame);
     return () => { stopped = true; cancelAnimationFrame(raf); };
   }
 
-  window.JF_ANIM = { still, play, has: id => !!POSES[id], _poses: POSES, _draw: (p, m) => svg(draw(p, m)) };
+  window.JF_ANIM = { still, play, has: id => !!POSES[id], _poses: POSES, _frame: (id, ms) => svg(toStr(shapes(poseAt(id, ms), POSES[id])), '', POSES[id].vb) };
 })();

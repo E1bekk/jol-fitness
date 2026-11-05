@@ -727,3 +727,18 @@ em[data-count],i[data-count]{font-style:normal}
 
 /* В Android-приложении кнопку Pro не показываем: платных функций в приложении нет */
 .is-app .upgrade { display: none !important; }
+
+/* Поле пароля с кнопкой-замком */
+.pw-wrap{position:relative}
+.pw-wrap .input{padding-right:3.6rem}
+.pw-eye{position:absolute;right:.375rem;top:50%;width:2.75rem;height:2.75rem;margin-top:-1.375rem;border-radius:50%;display:grid;place-items:center;background:var(--chip);color:var(--muted,#6b7785);transition:background .3s,color .3s,transform .15s}
+.pw-eye:active{transform:scale(.9)}
+.pw-eye svg{width:1.35rem;height:1.35rem;overflow:visible}
+.pw-eye .pw-shackle{transform-box:view-box;transform-origin:16px 11px;transition:transform .45s cubic-bezier(.34,1.56,.64,1)}
+.pw-eye .pw-body{transform-box:view-box;transform-origin:12px 21px;transition:transform .3s ease}
+.pw-eye .pw-hole{transition:opacity .25s}
+.pw-eye.is-open{background:var(--lime,#c6dc3e);color:#10202f}
+.pw-eye.is-open .pw-shackle{transform:translateY(-2.4px) rotate(-38deg)}
+.pw-eye.is-open .pw-body{animation:pw-bump .35s ease}
+@keyframes pw-bump{40%{transform:scale(1.08,.94)}}
+@media (prefers-reduced-motion:reduce){.pw-eye .pw-shackle,.pw-eye .pw-body{transition:none;animation:none}}
