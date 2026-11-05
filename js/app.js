@@ -184,10 +184,11 @@
     pop.classList.add('open');
   }
   // Кнопка-замок в поле пароля: закрыт — пароль скрыт, открыт (дужка поднимается) — пароль виден
+  const lockSvg = (cls, shackle) => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="${shackle}"/><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.6"/><path d="M12 14.6v2.2"/></svg>`;
+  // Две готовые картинки (закрытый и открытый замок) плавно сменяют друг друга — так анимация не дёргается
   const pwEye = () => `<button type="button" class="pw-eye" data-pw-eye tabindex="-1" aria-label="Показать пароль" aria-pressed="false">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path class="pw-shackle" d="M8 11V7.6a4 4 0 0 1 8 0V11"/><rect class="pw-body" x="4.5" y="10.5" width="15" height="10.5" rx="2.6"/>
-      <path class="pw-hole" d="M12 14.6v2.2"/></svg></button>`;
+    ${lockSvg('pw-ic pw-closed', 'M8 10.5V7.6a4 4 0 0 1 8 0v2.9')}${lockSvg('pw-ic pw-open', 'M8 10.5V6.6a4 4 0 0 1 7.6-1.7')}</button>`;
   // Переключаем сразу при касании (не ждём «клика»), поле не теряет фокус — клавиатура не прыгает,
   // курсор остаётся на месте. Клик с клавиатуры (Enter/пробел) тоже работает.
   function togglePw(b) {

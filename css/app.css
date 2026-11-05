@@ -731,9 +731,10 @@ em[data-count],i[data-count]{font-style:normal}
 /* Поле пароля с кнопкой-замком */
 .pw-wrap{position:relative}
 .pw-wrap .input{padding-right:3.6rem}
-.pw-eye{position:absolute;right:.375rem;top:50%;width:2.75rem;height:2.75rem;margin-top:-1.375rem;border-radius:50%;display:grid;place-items:center;background:var(--chip);color:var(--muted,#6b7785);touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color .2s ease,color .2s ease}
-.pw-eye svg{width:1.35rem;height:1.35rem;overflow:visible;pointer-events:none}
-.pw-eye .pw-shackle{transform-box:view-box;transform-origin:16px 11px;transition:transform .22s cubic-bezier(.2,.8,.3,1);will-change:transform}
+.pw-eye{position:absolute;right:.375rem;top:50%;width:2.75rem;height:2.75rem;margin-top:-1.375rem;border-radius:50%;display:grid;place-items:center;background:var(--chip);color:var(--muted,#6b7785);touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color .18s ease,color .18s ease}
+.pw-eye .pw-ic{grid-area:1/1;width:1.35rem;height:1.35rem;pointer-events:none;transition:opacity .16s ease,transform .2s ease}
+.pw-eye .pw-open{opacity:0;transform:scale(.7) rotate(-12deg)}
 .pw-eye.is-open{background:var(--lime,#c6dc3e);color:#10202f}
-.pw-eye.is-open .pw-shackle{transform:translateY(-2.2px) rotate(-32deg)}
-@media (prefers-reduced-motion:reduce){.pw-eye .pw-shackle{transition:none}}
+.pw-eye.is-open .pw-closed{opacity:0;transform:scale(.7) rotate(12deg)}
+.pw-eye.is-open .pw-open{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.pw-eye .pw-ic{transition:none}}
